@@ -12,3 +12,7 @@ coverage.out
 
 # IDE / OS noise
 .DS_Store
+
+# Python artifacts
+__pycache__/
+*.pyc
