@@ -109,6 +109,8 @@ Generated clients live in:
 - [`sdk/js`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/sdk/js)
 - [`sdk/python`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/sdk/python)
 
+For the easiest Node adoption path, see [`examples/node/README.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/examples/node/README.md).
+
 ## Project Layout
 
 ```text
