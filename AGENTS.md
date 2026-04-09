@@ -24,6 +24,17 @@ This repository implements a narrow agent control layer:
 - Test with `go test ./...`.
 - Build with `go build ./...`.
 
+## Style Guide
+
+Follow the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md). Non-negotiable rules for this codebase:
+
+- **`path/filepath` for all path ops** — `filepath.Join`, `filepath.Dir`; never roll your own.
+- **`%w` in `fmt.Errorf`** — enables `errors.Is` / `errors.As` for callers.
+- **Named fields in struct literals** — `Foo{Bar: x}`, not `Foo{x}`.
+- **Table-driven tests** — one test function per behaviour area, subtests via `t.Run`.
+- **No global mutable state** — pass dependencies explicitly; `policy.Engine` and `trace.Store` are already correct examples.
+- **Policy tests cover every rule branch** — `pkg/policy` is the security enforcement path; a missing test for a rule branch is a gap, not just a style issue.
+
 ## SDK Generation
 
 - Cross-language clients should be generated from `api/openapi.yaml`.
