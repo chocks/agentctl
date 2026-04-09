@@ -138,3 +138,18 @@ actions:
 		t.Fatalf("expected replay deny result, got %+v", replay.Results)
 	}
 }
+
+func TestServerUIIsServedWithoutAuth(t *testing.T) {
+	server := &apiServer{authToken: "secret-token"}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui", nil)
+	rec := httptest.NewRecorder()
+	server.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ui status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("agentctl")) {
+		t.Fatalf("expected ui body to contain agentctl, got %q", rec.Body.String())
+	}
+}

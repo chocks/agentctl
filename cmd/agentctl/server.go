@@ -68,6 +68,8 @@ func newServer() *apiServer {
 func (s *apiServer) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.Handle("/ui/", http.StripPrefix("/ui/", uiHandler()))
+	mux.HandleFunc("/ui", serveUIIndex)
 	mux.HandleFunc("/v1/gate", s.handleGate)
 	mux.HandleFunc("/v1/traces", s.handleTraces)
 	mux.HandleFunc("/v1/replay", s.handleReplay)
@@ -331,7 +333,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func (s *apiServer) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.authToken == "" || r.URL.Path == "/healthz" {
+		if s.authToken == "" || r.URL.Path == "/healthz" || r.URL.Path == "/ui" || strings.HasPrefix(r.URL.Path, "/ui/") {
 			next.ServeHTTP(w, r)
 			return
 		}

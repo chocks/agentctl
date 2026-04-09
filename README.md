@@ -59,6 +59,8 @@ Run the local API:
 go run ./cmd/agentctl serve
 ```
 
+Then open `http://127.0.0.1:8080/ui` for a small local traces, approvals, and replay UI.
+
 If you bind beyond loopback, `agentctl` now requires bearer auth:
 
 ```bash
