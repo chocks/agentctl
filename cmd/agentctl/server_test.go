@@ -1,0 +1,102 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+)
+
+func TestServerGateTraceReplay(t *testing.T) {
+	policyPath := filepath.Join(t.TempDir(), "agentctl.policy.yaml")
+	server := &apiServer{
+		traceFile:  filepath.Join(t.TempDir(), "traces.jsonl"),
+		policyFile: policyPath,
+	}
+
+	writeFile(t, policyPath, `
+actions:
+  access_secret:
+    require_approval: always
+  call_external_api:
+    allowed_domains:
+      - "api.openai.com"
+`)
+	t.Setenv("AGENTCTL_TRACE_FILE", server.traceFile)
+
+	gateBody := bytes.NewBufferString(`{"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call provider","context":{"session_id":"srv-1"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/gate", gateBody)
+	rec := httptest.NewRecorder()
+	server.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("gate status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var decision struct {
+		Verdict string `json:"verdict"`
+		Request struct {
+			Context struct {
+				SessionID string `json:"session_id"`
+			} `json:"context"`
+		} `json:"request"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &decision); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if decision.Verdict != "allow" {
+		t.Fatalf("expected allow, got %q", decision.Verdict)
+	}
+	if decision.Request.Context.SessionID != "srv-1" {
+		t.Fatalf("expected session id srv-1, got %q", decision.Request.Context.SessionID)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/traces?session_id=srv-1", nil)
+	rec = httptest.NewRecorder()
+	server.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("traces status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var traces struct {
+		Traces []json.RawMessage `json:"traces"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &traces); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(traces.Traces) != 1 {
+		t.Fatalf("expected 1 trace, got %d", len(traces.Traces))
+	}
+
+	replayPath := filepath.Join(t.TempDir(), "replay.policy.yaml")
+	writeFile(t, replayPath, `
+actions:
+  call_external_api:
+    blocked_domains:
+      - "api.openai.com"
+`)
+
+	replayBody := bytes.NewBufferString(`{"session_id":"srv-1","policy_path":"` + replayPath + `"}`)
+	req = httptest.NewRequest(http.MethodPost, "/v1/replay", replayBody)
+	rec = httptest.NewRecorder()
+	server.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("replay status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var replay struct {
+		Results []struct {
+			Verdict string `json:"verdict"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &replay); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(replay.Results) != 1 || replay.Results[0].Verdict != "deny" {
+		t.Fatalf("expected replay deny result, got %+v", replay.Results)
+	}
+}

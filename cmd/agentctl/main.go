@@ -14,7 +14,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -51,6 +50,8 @@ func main() {
 		}
 	case "replay":
 		cmdReplay()
+	case "serve":
+		cmdServe()
 	case "version":
 		fmt.Println("agentctl v0.1.0")
 	case "help", "--help", "-h":
@@ -214,39 +215,10 @@ func cmdReplay() {
 	policyFile := stringFlagValue("--policy", defaultPolicyFile)
 	limit := intFlagValue("--limit", 0)
 
-	pol := loadPolicyFromPath(policyFile)
-	filter := trace.TraceFilter{
-		SessionID: sessionID,
-		Limit:     limit,
-	}
-
-	traces, err := trace.ReadTraces(traceFilePath(), filter)
+	results, err := replaySession(policyFile, traceFilePath(), sessionID, limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
-	}
-	if len(traces) == 0 {
-		fmt.Fprintf(os.Stderr, "no traces found for session %q\n", sessionID)
-		os.Exit(1)
-	}
-
-	sort.Slice(traces, func(i, j int) bool {
-		return traces[i].Timestamp.Before(traces[j].Timestamp)
-	})
-
-	results := make([]schema.Decision, 0, len(traces))
-	for _, prior := range traces {
-		result := pol.Evaluate(prior.Request)
-		results = append(results, schema.Decision{
-			TraceID:        prior.TraceID,
-			Verdict:        result.Verdict,
-			RiskScore:      result.RiskScore,
-			Timestamp:      time.Now(),
-			Request:        prior.Request,
-			Reason:         result.Reason,
-			MatchedRules:   result.MatchedRules,
-			EvalDurationMs: 0,
-		})
 	}
 
 	out, err := json.MarshalIndent(struct {
@@ -289,6 +261,7 @@ Usage:
   agentctl trace list [--last N]   Show recent traces
   agentctl trace search [filters]  Search traces
   agentctl replay <session_id>     Re-evaluate a session with a policy file
+  agentctl serve [--addr host:port] Run local HTTP API
   agentctl version                 Print version
 
 Gate reads an ActionRequest from stdin and outputs a Decision.
@@ -310,6 +283,9 @@ Gate flags:
 Replay flags:
   --policy <file>      Policy file to use for replay
   --limit <n>          Max traces to replay
+
+Serve flags:
+  --addr <host:port>   Listen address (default 127.0.0.1:8080)
 
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path
