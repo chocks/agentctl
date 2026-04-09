@@ -133,6 +133,8 @@ Generated clients live in:
 
 For a higher-level JavaScript package over the generated SDK, see [`packages/js`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/packages/js).
 
+For a matching higher-level Python package, see [`packages/python`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/packages/python).
+
 For the easiest Node adoption path, see [`examples/node/README.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/examples/node/README.md).
 
 ## Project Layout
