@@ -13,6 +13,7 @@ func TestCLIEndToEndGateTraceReplay(t *testing.T) {
 	repoRoot := repoRootFromTestDir(t)
 	workdir := t.TempDir()
 	binaryPath := filepath.Join(workdir, "agentctl")
+	agentctlHome := filepath.Join(workdir, ".agentctl-home")
 
 	build := exec.Command("go", "build", "-o", binaryPath, "./cmd/agentctl")
 	build.Dir = repoRoot
@@ -31,13 +32,13 @@ actions:
 `)
 
 	allowInput := `{"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call provider"}`
-	_, stdout, stderr := runCLI(t, workdir, binaryPath, allowInput, "gate", "--session", "demo-1")
+	_, stdout, stderr := runCLI(t, workdir, binaryPath, agentctlHome, allowInput, "gate", "--session", "demo-1")
 	if !strings.Contains(stdout, `"verdict": "allow"`) {
 		t.Fatalf("expected allow output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 
 	escalateInput := `{"action":"access_secret","params":{"name":"OPENAI_API_KEY"},"reason":"need credentials"}`
-	exitCode, stdout, stderr := runCLI(t, workdir, binaryPath, escalateInput, "gate", "--session", "demo-1")
+	exitCode, stdout, stderr := runCLI(t, workdir, binaryPath, agentctlHome, escalateInput, "gate", "--session", "demo-1")
 	if exitCode != 2 {
 		t.Fatalf("expected exit code 2 for escalation, got %d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -45,7 +46,7 @@ actions:
 		t.Fatalf("expected escalate output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 
-	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, "", "trace", "search", "--session", "demo-1")
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "trace", "search", "--session", "demo-1")
 	if exitCode != 0 {
 		t.Fatalf("trace search exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -62,7 +63,7 @@ actions:
       - "api.openai.com"
 `)
 
-	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, "", "replay", "demo-1", "--policy", "replay.policy.yaml")
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "replay", "demo-1", "--policy", "replay.policy.yaml")
 	if exitCode != 0 {
 		t.Fatalf("replay exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -116,13 +117,14 @@ func inheritedGoEnv() []string {
 	return values
 }
 
-func runCLI(t *testing.T, dir, binaryPath, stdin string, args ...string) (int, string, string) {
+func runCLI(t *testing.T, dir, binaryPath, agentctlHome, stdin string, args ...string) (int, string, string) {
 	t.Helper()
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = append(os.Environ(), inheritedGoEnv()...)
+	cmd.Env = append(cmd.Env, "AGENTCTL_HOME="+agentctlHome)
 
 	stdout, err := cmd.Output()
 	if err == nil {

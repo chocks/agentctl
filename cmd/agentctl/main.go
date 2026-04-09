@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -23,7 +24,6 @@ import (
 	"github.com/agentctl/agentctl/pkg/trace"
 )
 
-const defaultTraceFile = ".agentctl/traces.jsonl"
 const defaultPolicyFile = "agentctl.policy.yaml"
 
 func main() {
@@ -65,10 +65,11 @@ func main() {
 func cmdGate() {
 	// Load policy
 	pol := loadPolicy()
+	traceFile := traceFilePath()
 
 	// Set up trace store
-	ensureDir(".agentctl")
-	tracer, err := trace.NewFileStore(defaultTraceFile)
+	ensureDir(filepath.Dir(traceFile))
+	tracer, err := trace.NewFileStore(traceFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -138,7 +139,7 @@ func cmdTraceList() {
 		}
 	}
 
-	traces, err := trace.ReadTraces(defaultTraceFile, trace.TraceFilter{Limit: limit})
+	traces, err := trace.ReadTraces(traceFilePath(), trace.TraceFilter{Limit: limit})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -186,7 +187,7 @@ func cmdTraceSearch() {
 		}
 	}
 
-	traces, err := trace.ReadTraces(defaultTraceFile, filter)
+	traces, err := trace.ReadTraces(traceFilePath(), filter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -219,7 +220,7 @@ func cmdReplay() {
 		Limit:     limit,
 	}
 
-	traces, err := trace.ReadTraces(defaultTraceFile, filter)
+	traces, err := trace.ReadTraces(traceFilePath(), filter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -308,7 +309,11 @@ Gate flags:
 
 Replay flags:
   --policy <file>      Policy file to use for replay
-  --limit <n>          Max traces to replay`)
+  --limit <n>          Max traces to replay
+
+Environment:
+  AGENTCTL_TRACE_FILE  Override the trace file path
+  AGENTCTL_HOME        Override the trace home directory`)
 }
 
 func ensureDir(path string) {
@@ -359,4 +364,22 @@ func intFlagValue(name string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func traceFilePath() string {
+	if path := os.Getenv("AGENTCTL_TRACE_FILE"); path != "" {
+		return path
+	}
+
+	home := os.Getenv("AGENTCTL_HOME")
+	if home == "" {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error resolving user home directory: %v\n", err)
+			os.Exit(1)
+		}
+		home = filepath.Join(userHome, ".agentctl")
+	}
+
+	return filepath.Join(home, "traces.jsonl")
 }

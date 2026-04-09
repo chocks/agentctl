@@ -49,6 +49,8 @@ EOF
 go run ./cmd/agentctl replay demo-1 --policy agentctl.policy.yaml
 ```
 
+Traces are stored in `~/.agentctl/traces.jsonl` by default. Set `AGENTCTL_HOME` or `AGENTCTL_TRACE_FILE` to override that location.
+
 ## Policy File
 
 `agentctl` loads `agentctl.policy.yaml` from the repo root by default.
