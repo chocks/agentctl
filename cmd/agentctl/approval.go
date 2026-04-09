@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/agentctl/agentctl/pkg/schema"
@@ -34,21 +35,7 @@ type approvalRecord struct {
 }
 
 func approvalFilePath() string {
-	if path := os.Getenv("AGENTCTL_APPROVAL_FILE"); path != "" {
-		return path
-	}
-
-	home := os.Getenv("AGENTCTL_HOME")
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error resolving user home directory: %v\n", err)
-			os.Exit(1)
-		}
-		home = filepath.Join(userHome, ".agentctl")
-	}
-
-	return filepath.Join(home, "approvals.jsonl")
+	return agentctlDataPath("AGENTCTL_APPROVAL_FILE", "approvals.jsonl")
 }
 
 func recordApprovalForDecision(path string, decision *schema.Decision) error {
@@ -100,6 +87,7 @@ func readApprovals(path string, status approvalStatus) ([]approvalRecord, error)
 
 	latest := map[string]approvalRecord{}
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024) // allow lines up to 4 MB
 	for scanner.Scan() {
 		if len(scanner.Bytes()) == 0 {
 			continue
@@ -184,7 +172,7 @@ func cmdApprovalList() {
 	}
 
 	fmt.Printf("%-36s %-18s %-18s %-10s %s\n", "APPROVAL ID", "SESSION", "ACTION", "STATUS", "REASON")
-	fmt.Println(repeat("-", 100))
+	fmt.Println(strings.Repeat("-", 100))
 	for _, record := range records {
 		fmt.Printf("%-36s %-18s %-18s %-10s %s\n",
 			record.ApprovalID,

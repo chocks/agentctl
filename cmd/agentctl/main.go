@@ -23,7 +23,10 @@ import (
 	"github.com/agentctl/agentctl/pkg/trace"
 )
 
-const defaultPolicyFile = "agentctl.policy.yaml"
+const (
+	defaultPolicyFile = "agentctl.policy.yaml"
+	agentctlVersion   = "0.1.0"
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -59,7 +62,7 @@ func main() {
 	case "serve":
 		cmdServe()
 	case "version":
-		fmt.Println("agentctl v0.1.0")
+		fmt.Println("agentctl v" + agentctlVersion)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -70,11 +73,9 @@ func main() {
 }
 
 func cmdGate() {
-	// Load policy
 	pol := loadPolicy()
 	traceFile := traceFilePath()
 
-	// Set up trace store
 	ensureDir(filepath.Dir(traceFile))
 	tracer, err := trace.NewFileStore(traceFile)
 	if err != nil {
@@ -82,10 +83,8 @@ func cmdGate() {
 		os.Exit(1)
 	}
 
-	// Create gate
 	g := gate.New(pol, tracer)
 
-	// Read action request from stdin
 	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
@@ -99,8 +98,6 @@ func cmdGate() {
 	}
 
 	now := time.Now()
-
-	// Inject context (CLI sets these, not the caller)
 	req.Context = schema.RequestContext{
 		SessionID: stringFlagValue("--session", fmt.Sprintf("cli_%d", now.UnixMilli())),
 		Model:     stringFlagValue("--model", ""),
@@ -108,7 +105,6 @@ func cmdGate() {
 		Timestamp: now,
 	}
 
-	// Evaluate
 	decision, err := g.Evaluate(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -119,7 +115,6 @@ func cmdGate() {
 		os.Exit(1)
 	}
 
-	// Output decision as JSON
 	out, err := json.MarshalIndent(decision, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error encoding decision: %v\n", err)
@@ -127,7 +122,6 @@ func cmdGate() {
 	}
 	fmt.Println(string(out))
 
-	// Exit code reflects verdict
 	switch decision.Verdict {
 	case schema.VerdictAllow:
 		os.Exit(0)
@@ -158,7 +152,7 @@ func cmdTraceList() {
 
 	// Print as table
 	fmt.Printf("%-20s %-20s %-10s %-5s %s\n", "TIME", "ACTION", "VERDICT", "RISK", "REASON")
-	fmt.Println(repeat("-", 90))
+	fmt.Println(strings.Repeat("-", 90))
 	for _, t := range traces {
 		fmt.Printf("%-20s %-20s %-10s %-5d %s\n",
 			t.Timestamp.Format("15:04:05"),
@@ -344,10 +338,6 @@ func truncate(s string, max int) string {
 	return s[:max-3] + "..."
 }
 
-func repeat(s string, n int) string {
-	return strings.Repeat(s, n)
-}
-
 func parseDuration(s string) (time.Duration, error) {
 	// Support "7d" style durations
 	if len(s) > 0 && s[len(s)-1] == 'd' {
@@ -380,11 +370,12 @@ func intFlagValue(name string, fallback int) int {
 	return fallback
 }
 
-func traceFilePath() string {
-	if path := os.Getenv("AGENTCTL_TRACE_FILE"); path != "" {
+// agentctlDataPath resolves a file path under the agentctl home directory.
+// envOverride, if set in the environment, bypasses home resolution entirely.
+func agentctlDataPath(envOverride, filename string) string {
+	if path := os.Getenv(envOverride); path != "" {
 		return path
 	}
-
 	home := os.Getenv("AGENTCTL_HOME")
 	if home == "" {
 		userHome, err := os.UserHomeDir()
@@ -394,6 +385,9 @@ func traceFilePath() string {
 		}
 		home = filepath.Join(userHome, ".agentctl")
 	}
+	return filepath.Join(home, filename)
+}
 
-	return filepath.Join(home, "traces.jsonl")
+func traceFilePath() string {
+	return agentctlDataPath("AGENTCTL_TRACE_FILE", "traces.jsonl")
 }
