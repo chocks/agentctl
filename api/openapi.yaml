@@ -15,6 +15,7 @@ tags:
   - name: gate
   - name: trace
   - name: replay
+  - name: approvals
 paths:
   /v1/gate:
     post:
@@ -102,12 +103,183 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReplayResponse"
+  /v1/approvals:
+    get:
+      tags: [approvals]
+      operationId: listApprovals
+      summary: List approval records
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/ApprovalStatus"
+      responses:
+        "200":
+          description: Approval list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvals]
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ApprovalRecord"
+  /v1/approvals/{id}:
+    get:
+      tags: [approvals]
+      operationId: getApproval
+      summary: Fetch a single approval record
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approval record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "404":
+          description: Not found
+  /v1/approvals/{id}/wait:
+    get:
+      tags: [approvals]
+      operationId: waitForApproval
+      summary: Long-poll until a pending approval is resolved or timeout elapses
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: timeout
+          description: Poll timeout as a Go duration string (e.g. "30s", "2m"). Max 120s. Default 30s.
+          schema:
+            type: string
+            default: "30s"
+      responses:
+        "200":
+          description: Approval resolved (approved or denied)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "408":
+          description: Timeout — approval still pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "404":
+          description: Not found
+  /v1/approvals/{id}/approve:
+    post:
+      tags: [approvals]
+      operationId: approveApproval
+      summary: Approve a pending escalation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: X-Agentctl-Actor
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated approval record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "400":
+          description: Already resolved or not found
+  /v1/approvals/{id}/deny:
+    post:
+      tags: [approvals]
+      operationId: denyApproval
+      summary: Deny a pending escalation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: X-Agentctl-Actor
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated approval record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "400":
+          description: Already resolved or not found
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
   schemas:
+    ApprovalStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - denied
+    ApprovalRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - approval_id
+        - trace_id
+        - session_id
+        - action
+        - status
+        - reason
+        - requested_at
+      properties:
+        approval_id:
+          type: string
+        trace_id:
+          type: string
+        session_id:
+          type: string
+        action:
+          $ref: "#/components/schemas/Action"
+        status:
+          $ref: "#/components/schemas/ApprovalStatus"
+        reason:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        resolved_by:
+          type: string
     Action:
       type: string
       enum:
