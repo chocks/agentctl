@@ -50,6 +50,8 @@ func main() {
 		}
 	case "replay":
 		cmdReplay()
+	case "approval":
+		cmdApproval()
 	case "serve":
 		cmdServe()
 	case "version":
@@ -106,6 +108,10 @@ func cmdGate() {
 	decision, err := g.Evaluate(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := recordApprovalForDecision(approvalFilePath(), decision); err != nil {
+		fmt.Fprintf(os.Stderr, "error recording approval: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -261,6 +267,7 @@ Usage:
   agentctl trace list [--last N]   Show recent traces
   agentctl trace search [filters]  Search traces
   agentctl replay <session_id>     Re-evaluate a session with a policy file
+  agentctl approval [subcommand]   List or resolve escalations
   agentctl serve [--addr host:port] Run local HTTP API
   agentctl version                 Print version
 
@@ -284,11 +291,17 @@ Replay flags:
   --policy <file>      Policy file to use for replay
   --limit <n>          Max traces to replay
 
+Approval commands:
+  approval list [--status pending|approved|denied]
+  approval approve <id> [--by name]
+  approval deny <id> [--by name]
+
 Serve flags:
   --addr <host:port>   Listen address (default 127.0.0.1:8080)
 
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path
+  AGENTCTL_APPROVAL_FILE Override the approvals file path
   AGENTCTL_HOME        Override the trace home directory`)
 }
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/agentctl/agentctl/pkg/gate"
@@ -28,6 +29,10 @@ type replayResponse struct {
 	SessionID string            `json:"session_id"`
 	Policy    string            `json:"policy"`
 	Results   []schema.Decision `json:"results"`
+}
+
+type approvalListResponse struct {
+	Approvals []approvalRecord `json:"approvals"`
 }
 
 func cmdServe() {
@@ -59,6 +64,8 @@ func (s *apiServer) routes() http.Handler {
 	mux.HandleFunc("/v1/gate", s.handleGate)
 	mux.HandleFunc("/v1/traces", s.handleTraces)
 	mux.HandleFunc("/v1/replay", s.handleReplay)
+	mux.HandleFunc("/v1/approvals", s.handleApprovals)
+	mux.HandleFunc("/v1/approvals/", s.handleApprovalResolution)
 	return mux
 }
 
@@ -106,6 +113,10 @@ func (s *apiServer) handleGate(w http.ResponseWriter, r *http.Request) {
 	decision, err := g.Evaluate(req)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("evaluating request: %v", err))
+		return
+	}
+	if err := recordApprovalForDecision(approvalFilePath(), decision); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("recording approval: %v", err))
 		return
 	}
 
@@ -165,6 +176,60 @@ func (s *apiServer) handleReplay(w http.ResponseWriter, r *http.Request) {
 		Policy:    policyPath,
 		Results:   results,
 	})
+}
+
+func (s *apiServer) handleApprovals(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+
+	status := approvalStatus(r.URL.Query().Get("status"))
+	records, err := readApprovals(approvalFilePath(), status)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("reading approvals: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, approvalListResponse{Approvals: records})
+}
+
+func (s *apiServer) handleApprovalResolution(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	trimmed := strings.TrimPrefix(r.URL.Path, "/v1/approvals/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 2 || parts[0] == "" {
+		writeJSONError(w, http.StatusNotFound, "approval route not found")
+		return
+	}
+
+	var status approvalStatus
+	switch parts[1] {
+	case "approve":
+		status = approvalStatusApproved
+	case "deny":
+		status = approvalStatusDenied
+	default:
+		writeJSONError(w, http.StatusNotFound, "approval route not found")
+		return
+	}
+
+	resolvedBy := r.Header.Get("X-Agentctl-Actor")
+	if resolvedBy == "" {
+		resolvedBy = "api-operator"
+	}
+
+	record, err := resolveApproval(approvalFilePath(), parts[0], status, resolvedBy)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, record)
 }
 
 func replaySession(policyPath, traceFile, sessionID string, limit int) ([]schema.Decision, error) {

@@ -53,6 +53,24 @@ actions:
 		t.Fatalf("expected session id srv-1, got %q", decision.Request.Context.SessionID)
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/v1/approvals?status=pending", nil)
+	rec = httptest.NewRecorder()
+	server.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approvals status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var approvals struct {
+		Approvals []json.RawMessage `json:"approvals"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &approvals); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(approvals.Approvals) != 0 {
+		t.Fatalf("expected 0 approvals for allow flow, got %d", len(approvals.Approvals))
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/v1/traces?session_id=srv-1", nil)
 	rec = httptest.NewRecorder()
 	server.routes().ServeHTTP(rec, req)

@@ -45,6 +45,28 @@ actions:
 	if !strings.Contains(stdout, `"verdict": "escalate"`) {
 		t.Fatalf("expected escalate output, got stdout=%q stderr=%q", stdout, stderr)
 	}
+	var escalated struct {
+		TraceID string `json:"trace_id"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &escalated); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "approval", "list", "--status", "pending")
+	if exitCode != 0 {
+		t.Fatalf("approval list exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	if !strings.Contains(stdout, escalated.TraceID) {
+		t.Fatalf("expected approval list to include %q, got stdout=%q stderr=%q", escalated.TraceID, stdout, stderr)
+	}
+
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "approval", "approve", escalated.TraceID, "--by", "tester")
+	if exitCode != 0 {
+		t.Fatalf("approval approve exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	if !strings.Contains(stdout, `"status": "approved"`) {
+		t.Fatalf("expected approved output, got stdout=%q stderr=%q", stdout, stderr)
+	}
 
 	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "trace", "search", "--session", "demo-1")
 	if exitCode != 0 {
