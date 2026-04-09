@@ -1,134 +1,41 @@
-import {
-  Configuration,
-  GateApi,
-  type Action,
-  type GateRequest,
-  type Decision,
-} from "../../sdk/js/src";
+// examples/node/guarded-tools.ts
+//
+// Demonstrates wrapping Node.js built-ins with agentctl guards.
+// Uses the @agentctl/client package — see ../../packages/js/src/
+//
+// Usage:
+//   AGENTCTL_URL=http://127.0.0.1:8080 npx ts-node guarded-tools.ts
 
-type AgentctlClientOptions = {
-  basePath?: string;
-  defaultContext?: GateRequest["context"];
-};
+import { exec } from "child_process";
+import { writeFile } from "fs/promises";
+import { promisify } from "util";
+import { AgentctlClient, AgentctlNodeGuard } from "../../packages/js/src";
 
-type GuardContext = {
-  agent?: string;
-  model?: string;
-  sessionId?: string;
-  turn?: number;
-};
+const execAsync = promisify(exec);
 
-type WriteFileInput = {
-  path: string;
-  content: string;
-  operation?: "create" | "overwrite" | "append";
-};
+const client = new AgentctlClient({
+  baseUrl: process.env.AGENTCTL_URL ?? "http://127.0.0.1:8080",
+  token: process.env.AGENTCTL_AUTH_TOKEN,
+  defaultContext: {
+    actor: process.env.USER,
+    team: "dev",
+  },
+});
 
-type FetchLike = (input: string, init?: { method?: string }) => Promise<unknown>;
-type ExecLike = (command: string) => Promise<unknown>;
-type WriteFileLike = (path: string, content: string) => Promise<unknown>;
+const guard = new AgentctlNodeGuard(client, {
+  sessionId: process.env.AGENTCTL_SESSION ?? `node-${Date.now()}`,
+  agent: "node-example",
+});
 
-export class AgentctlNodeGuard {
-  private readonly gateApi: GateApi;
-  private readonly defaultContext?: GateRequest["context"];
+// Wrap exec: shell commands are gated as run_code
+export const guardedExec = guard.wrapExec(
+  (cmd: string) => execAsync(cmd).then(({ stdout }) => stdout),
+);
 
-  constructor(options: AgentctlClientOptions = {}) {
-    this.gateApi = new GateApi(
-      new Configuration({
-        basePath: options.basePath ?? "http://127.0.0.1:8080",
-      }),
-    );
-    this.defaultContext = options.defaultContext;
-  }
+// Wrap writeFile: file writes are gated as write_file
+export const guardedWriteFile = guard.wrapWriteFile(
+  (path: string, content: string) => writeFile(path, content, "utf8"),
+);
 
-  async gate(request: Omit<GateRequest, "context"> & { context?: GateRequest["context"] }): Promise<Decision> {
-    const response = await this.gateApi.gateAction({
-      gateRequest: {
-        ...request,
-        context: {
-          ...this.defaultContext,
-          ...request.context,
-        },
-      },
-    });
-
-    return response;
-  }
-
-  wrapExec(execFn: ExecLike, context: GuardContext = {}): ExecLike {
-    return async (command: string) => {
-      await this.assertAllowed("run_code", {
-        language: "bash",
-        command,
-      }, `execute command: ${command}`, context);
-
-      return execFn(command);
-    };
-  }
-
-  wrapWriteFile(writeFileFn: WriteFileLike, context: GuardContext = {}): WriteFileLike {
-    return async (path: string, content: string) => {
-      await this.assertAllowed("write_file", {
-        path,
-        operation: "overwrite",
-        sizeBytes: Buffer.byteLength(content),
-      }, `write file: ${path}`, context);
-
-      return writeFileFn(path, content);
-    };
-  }
-
-  wrapFetch(fetchFn: FetchLike, context: GuardContext = {}): FetchLike {
-    return async (input: string, init?: { method?: string }) => {
-      const url = new URL(input);
-
-      await this.assertAllowed("call_external_api", {
-        url: url.toString(),
-        method: init?.method ?? "GET",
-        domain: url.hostname,
-      }, `call external API: ${url.hostname}`, context);
-
-      return fetchFn(input, init);
-    };
-  }
-
-  async guardedWriteFile(
-    writeFileFn: WriteFileLike,
-    input: WriteFileInput,
-    context: GuardContext = {},
-  ): Promise<unknown> {
-    const operation = input.operation ?? "overwrite";
-
-    await this.assertAllowed("write_file", {
-      path: input.path,
-      operation,
-      sizeBytes: Buffer.byteLength(input.content),
-    }, `write file: ${input.path}`, context);
-
-    return writeFileFn(input.path, input.content);
-  }
-
-  private async assertAllowed(
-    action: Action,
-    params: GateRequest["params"],
-    reason: string,
-    context: GuardContext,
-  ): Promise<void> {
-    const decision = await this.gate({
-      action,
-      params,
-      reason,
-      context: {
-        sessionId: context.sessionId ?? `node-${Date.now()}`,
-        agent: context.agent,
-        model: context.model,
-        turn: context.turn,
-        timestamp: new Date(),
-      },
-    });
-
-    if (decision.verdict !== "allow") {
-      throw new Error(`agentctl ${decision.verdict}: ${decision.reason}`);
-    }
-  }
-}
+// Wrap fetch: outbound HTTP is gated as call_external_api
+export const guardedFetch = guard.wrapFetch(fetch);
