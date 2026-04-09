@@ -7,7 +7,8 @@
   },
   "scripts": {
     "codegen:js": "openapi-generator-cli generate -i api/openapi.yaml -g typescript-fetch -o sdk/js",
-    "codegen:py": "openapi-generator-cli generate -i api/openapi.yaml -g python -o sdk/python"
+    "codegen:py": "openapi-generator-cli generate -i api/openapi.yaml -g python -o sdk/python",
+    "check:js-package": "tsc -p packages/js/tsconfig.json"
   },
   "repository": {
     "type": "git",
@@ -22,6 +23,7 @@
   },
   "homepage": "https://github.com/chocks/agentctl#readme",
   "devDependencies": {
-    "@openapitools/openapi-generator-cli": "^2.31.1"
+    "@openapitools/openapi-generator-cli": "^2.31.1",
+    "typescript": "^6.0.2"
   }
 }
