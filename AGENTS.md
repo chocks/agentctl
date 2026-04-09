@@ -24,6 +24,12 @@ This repository implements a narrow agent control layer:
 - Test with `go test ./...`.
 - Build with `go build ./...`.
 
+## SDK Generation
+
+- Cross-language clients should be generated from `api/openapi.yaml`.
+- Do not hand-roll divergent JS and Python request models.
+- When the contract changes, update OpenAPI, Go schema, tests, and codegen docs together.
+
 ## Release Bias
 
 - Reliability beats feature count.

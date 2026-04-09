@@ -10,6 +10,12 @@ The current implementation is a small Go CLI with:
 - `trace`: inspect prior decisions from the local trace store
 - `replay`: re-run a recorded session with another policy file
 
+The repo is now also set up to be schema-first for future SDKs:
+
+- [`api/openapi.yaml`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/api/openapi.yaml) is the cross-language API contract
+- `pkg/schema` remains the Go runtime model
+- JS and Python clients should be generated from the OpenAPI spec
+
 ## Scope
 
 This repo intentionally covers only the dangerous operations:
@@ -81,6 +87,19 @@ make lint
 make test
 make build
 ```
+
+## SDK Codegen
+
+To avoid hand-maintaining JS and Python models, use the OpenAPI contract in [`api/openapi.yaml`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/api/openapi.yaml).
+
+Planned generation flow:
+
+```bash
+make codegen-js
+make codegen-py
+```
+
+Those targets assume `openapi-generator-cli` is installed. The design note is in [`docs/codegen.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/docs/codegen.md).
 
 ## Project Layout
 

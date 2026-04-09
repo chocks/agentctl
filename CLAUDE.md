@@ -20,6 +20,13 @@
 - Add tests for policy and trace edge cases when behavior changes.
 - Use `golangci-lint` defaults plus the repo config before merging.
 
+## Cross-Language Contract
+
+- Treat `api/openapi.yaml` as the source of truth for generated JS and Python clients.
+- Keep OpenAPI and `pkg/schema` synchronized.
+- Prefer contract-first additions over language-specific SDK drift.
+- If you add or rename request fields, update the OpenAPI spec in the same change.
+
 ## Product Guardrails
 
 - Do not expand scope into a full compliance platform in this repo without clear product pull.

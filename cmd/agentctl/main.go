@@ -166,6 +166,8 @@ func cmdTraceSearch() {
 			break
 		}
 		switch arg {
+		case "--session":
+			filter.SessionID = os.Args[i+1]
 		case "--action":
 			filter.Action = schema.Action(os.Args[i+1])
 		case "--verdict":
@@ -292,6 +294,7 @@ Gate reads an ActionRequest from stdin and outputs a Decision.
 Exit codes: 0=allow, 1=deny, 2=escalate
 
 Search filters:
+  --session <id>      Filter by session id
   --action <action>    Filter by action type
   --verdict <verdict>  Filter by verdict (allow/deny/escalate)
   --package <name>     Filter install_package by package name
