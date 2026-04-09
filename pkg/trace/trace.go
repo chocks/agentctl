@@ -1,15 +1,5 @@
 // Package trace implements the append-only trace store for agentctl.
-//
-// Every gate() decision is recorded here. This is the data model
-// that makes everything else possible:
-//   - debugging: "what did the agent do?"
-//   - replay: "re-run with different policy"
-//   - audit: "prove what happened"
-//   - policy tuning: "what would this rule have caught?"
-//
-// v1: JSON lines to file (simple, zero deps, pipeable)
-// v2: SQLite for local querying
-// v3: PostgreSQL for teams
+// Every gate decision is recorded here for debugging, replay, and audit.
 package trace
 
 import (
@@ -29,7 +19,6 @@ import (
 type Store struct {
 	writer io.Writer
 	mu     sync.Mutex
-	count  int64
 }
 
 // NewFileStore creates a trace store that writes JSON lines to a file.
@@ -62,16 +51,7 @@ func (s *Store) Record(d *schema.Decision) {
 	data = append(data, '\n')
 	if _, err := s.writer.Write(data); err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl: trace write error: %v\n", err)
-		return
 	}
-	s.count++
-}
-
-// Count returns the number of traces recorded.
-func (s *Store) Count() int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.count
 }
 
 // ── Query support (for replay and audit) ────────────────────────────────────
@@ -88,8 +68,6 @@ type TraceFilter struct {
 }
 
 // ReadTraces reads and filters traces from a JSON lines file.
-// This is the v1 query engine — scan and filter. Good enough for
-// files up to ~100k lines. SQLite replaces this in v2.
 func ReadTraces(path string, filter TraceFilter) ([]schema.Decision, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -104,6 +82,7 @@ func ReadTraces(path string, filter TraceFilter) ([]schema.Decision, error) {
 
 	var all []schema.Decision
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024) // allow lines up to 4 MB
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -148,12 +127,13 @@ func matchesFilter(d schema.Decision, f TraceFilter) bool {
 	if !f.Until.IsZero() && d.Timestamp.After(f.Until) {
 		return false
 	}
-	if f.Package != "" && d.Request.Action == schema.ActionInstallPackage {
+	if f.Package != "" {
+		if d.Request.Action != schema.ActionInstallPackage {
+			return false
+		}
 		var params schema.InstallPackageParams
-		if err := json.Unmarshal(d.Request.Params, &params); err == nil {
-			if params.Package != f.Package {
-				return false
-			}
+		if err := json.Unmarshal(d.Request.Params, &params); err == nil && params.Package != f.Package {
+			return false
 		}
 	}
 	return true

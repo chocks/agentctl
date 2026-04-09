@@ -322,7 +322,7 @@ func (s *mcpServer) handleInitialize(id json.RawMessage) jsonRPCMessage {
 	result, _ := json.Marshal(mcpInitializeResult{
 		ProtocolVersion: mcpProtocolVersion,
 		Capabilities:    map[string]any{"tools": map[string]any{}},
-		ServerInfo:      mcpImplementation{Name: "agentctl", Version: "0.1.0"},
+		ServerInfo:      mcpImplementation{Name: "agentctl", Version: agentctlVersion},
 	})
 	return okResponse(id, result)
 }
