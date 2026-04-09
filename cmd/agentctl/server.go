@@ -241,6 +241,48 @@ func (s *apiServer) handleApprovalByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GET /v1/approvals/{id}/wait — long-poll until resolved or timeout
+	if r.Method == http.MethodGet && len(parts) == 2 && parts[1] == "wait" {
+		timeoutStr := r.URL.Query().Get("timeout")
+		timeout := 30 * time.Second
+		if timeoutStr != "" {
+			if d, err := parseDuration(timeoutStr); err == nil && d > 0 {
+				if d > 120*time.Second {
+					d = 120 * time.Second
+				}
+				timeout = d
+			}
+		}
+		deadline := time.Now().Add(timeout)
+		for {
+			records, err := readApprovals(approvalFilePath(), "")
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("reading approvals: %v", err))
+				return
+			}
+			var found *approvalRecord
+			for i := range records {
+				if records[i].ApprovalID == approvalID {
+					found = &records[i]
+					break
+				}
+			}
+			if found == nil {
+				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("approval %q not found", approvalID))
+				return
+			}
+			if found.Status != approvalStatusPending {
+				writeJSON(w, http.StatusOK, *found)
+				return
+			}
+			if time.Now().After(deadline) {
+				writeJSON(w, http.StatusRequestTimeout, *found)
+				return
+			}
+			time.Sleep(time.Second)
+		}
+	}
+
 	// POST /v1/approvals/{id}/approve|deny
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w, http.MethodPost)

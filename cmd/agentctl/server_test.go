@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestServerGateTraceReplay(t *testing.T) {
@@ -138,6 +141,106 @@ actions:
 	if len(replay.Results) != 1 || replay.Results[0].Verdict != "deny" {
 		t.Fatalf("expected replay deny result, got %+v", replay.Results)
 	}
+}
+
+func TestApprovalWaitEndpoint(t *testing.T) {
+	t.Run("returns 404 for unknown approval id", func(t *testing.T) {
+		approvalFile := filepath.Join(t.TempDir(), "approvals.jsonl")
+		t.Setenv("AGENTCTL_APPROVAL_FILE", approvalFile)
+		server := &apiServer{authToken: ""}
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/approvals/no-such-id/wait?timeout=1s", nil)
+		rec := httptest.NewRecorder()
+		server.routes().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("returns 408 when approval stays pending past timeout", func(t *testing.T) {
+		approvalFile := filepath.Join(t.TempDir(), "approvals.jsonl")
+		t.Setenv("AGENTCTL_APPROVAL_FILE", approvalFile)
+
+		// Write a pending approval record directly.
+		rec := approvalRecord{
+			ApprovalID:  "wait-test-1",
+			TraceID:     "wait-test-1",
+			SessionID:   "s1",
+			Action:      "access_secret",
+			Status:      approvalStatusPending,
+			Reason:      "needs review",
+			RequestedAt: time.Now(),
+		}
+		if err := appendApproval(approvalFile, rec); err != nil {
+			t.Fatalf("appendApproval: %v", err)
+		}
+
+		server := &apiServer{authToken: ""}
+		httpReq := httptest.NewRequest(http.MethodGet, "/v1/approvals/wait-test-1/wait?timeout=2s", nil)
+		httpRec := httptest.NewRecorder()
+		server.routes().ServeHTTP(httpRec, httpReq)
+
+		if httpRec.Code != http.StatusRequestTimeout {
+			t.Fatalf("expected 408, got %d body=%s", httpRec.Code, httpRec.Body.String())
+		}
+		var body approvalRecord
+		if err := json.Unmarshal(httpRec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if body.Status != approvalStatusPending {
+			t.Fatalf("expected pending, got %q", body.Status)
+		}
+	})
+
+	t.Run("returns 200 when approval is resolved while waiting", func(t *testing.T) {
+		approvalFile := filepath.Join(t.TempDir(), "approvals.jsonl")
+		t.Setenv("AGENTCTL_APPROVAL_FILE", approvalFile)
+
+		rec := approvalRecord{
+			ApprovalID:  "wait-test-2",
+			TraceID:     "wait-test-2",
+			SessionID:   "s2",
+			Action:      "access_secret",
+			Status:      approvalStatusPending,
+			Reason:      "needs review",
+			RequestedAt: time.Now(),
+		}
+		if err := appendApproval(approvalFile, rec); err != nil {
+			t.Fatalf("appendApproval: %v", err)
+		}
+
+		// Approve asynchronously after a short delay.
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(1500 * time.Millisecond)
+			if _, err := resolveApproval(approvalFile, "wait-test-2", approvalStatusApproved, "alice"); err != nil {
+				fmt.Printf("resolveApproval error: %v\n", err)
+			}
+		}()
+
+		server := &apiServer{authToken: ""}
+		httpReq := httptest.NewRequest(http.MethodGet, "/v1/approvals/wait-test-2/wait?timeout=10s", nil)
+		httpRec := httptest.NewRecorder()
+		server.routes().ServeHTTP(httpRec, httpReq)
+		wg.Wait()
+
+		if httpRec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", httpRec.Code, httpRec.Body.String())
+		}
+		var body approvalRecord
+		if err := json.Unmarshal(httpRec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if body.Status != approvalStatusApproved {
+			t.Fatalf("expected approved, got %q", body.Status)
+		}
+		if body.ResolvedBy != "alice" {
+			t.Fatalf("expected resolved_by=alice, got %q", body.ResolvedBy)
+		}
+	})
 }
 
 func TestServerUIIsServedWithoutAuth(t *testing.T) {

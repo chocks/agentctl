@@ -13,15 +13,24 @@ export type GuardContext = {
   turn?: number;
 };
 
+export type NodeGuardOptions = {
+  waitForApprovalSecs?: number;
+};
+
 export type FetchLike = (input: string, init?: { method?: string }) => Promise<unknown>;
 export type ExecLike = (command: string) => Promise<unknown>;
 export type WriteFileLike = (path: string, content: string) => Promise<unknown>;
 
 export class AgentctlNodeGuard {
+  private readonly waitForApprovalSecs?: number;
+
   constructor(
     private readonly client: AgentctlClient,
     private readonly defaultContext: GuardContext = {},
-  ) {}
+    options: NodeGuardOptions = {},
+  ) {
+    this.waitForApprovalSecs = options.waitForApprovalSecs;
+  }
 
   wrapExec(execFn: ExecLike, context: GuardContext = {}): ExecLike {
     return async (command: string) => {
@@ -82,9 +91,21 @@ export class AgentctlNodeGuard {
       context: requestContext,
     });
 
-    if (decision.verdict !== "allow") {
-      throw new Error(`agentctl ${decision.verdict}: ${decision.reason}`);
+    if (decision.verdict === "allow") {
+      return;
     }
+
+    if (decision.verdict === "escalate" && this.waitForApprovalSecs !== undefined) {
+      const record = await this.client.waitForApproval(decision.traceId, {
+        timeoutSecs: this.waitForApprovalSecs,
+      });
+      if (record.status === "approved") {
+        return;
+      }
+      throw new Error(`agentctl escalate: approval ${record.status} for ${decision.reason}`);
+    }
+
+    throw new Error(`agentctl ${decision.verdict}: ${decision.reason}`);
   }
 }
 
