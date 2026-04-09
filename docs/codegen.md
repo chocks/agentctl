@@ -45,6 +45,7 @@ openapi-generator-cli generate \
 Using the repo make targets:
 
 ```bash
+npm install
 make codegen-js
 make codegen-py
 ```

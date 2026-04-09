@@ -97,11 +97,17 @@ To avoid hand-maintaining JS and Python models, use the OpenAPI contract in [`ap
 Planned generation flow:
 
 ```bash
+npm install
 make codegen-js
 make codegen-py
 ```
 
-Those targets assume `openapi-generator-cli` is installed. The design note is in [`docs/codegen.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/docs/codegen.md).
+The generator is managed as a local dev dependency in [`package.json`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/package.json). The design note is in [`docs/codegen.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/docs/codegen.md).
+
+Generated clients live in:
+
+- [`sdk/js`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/sdk/js)
+- [`sdk/python`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/sdk/python)
 
 ## Project Layout
 

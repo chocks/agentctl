@@ -1,5 +1,5 @@
 GOLANGCI_LINT ?= golangci-lint
-OPENAPI_GENERATOR ?= openapi-generator-cli
+OPENAPI_GENERATOR ?= npx openapi-generator-cli
 OPENAPI_SPEC ?= api/openapi.yaml
 
 .PHONY: fmt lint test build codegen-js codegen-py

@@ -1,6 +1,7 @@
 .agentctl/
 .cache/
 .tmp/
+node_modules/
 
 # Go build outputs
 bin/
