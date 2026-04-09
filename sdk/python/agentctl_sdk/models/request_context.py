@@ -30,9 +30,11 @@ class RequestContext(BaseModel):
     session_id: StrictStr
     model: Optional[StrictStr] = None
     agent: Optional[StrictStr] = None
+    actor: Optional[StrictStr] = None
+    team: Optional[StrictStr] = None
     turn: Optional[StrictInt] = None
     timestamp: datetime
-    __properties: ClassVar[List[str]] = ["session_id", "model", "agent", "turn", "timestamp"]
+    __properties: ClassVar[List[str]] = ["session_id", "model", "agent", "actor", "team", "turn", "timestamp"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -88,6 +90,8 @@ class RequestContext(BaseModel):
             "session_id": obj.get("session_id"),
             "model": obj.get("model"),
             "agent": obj.get("agent"),
+            "actor": obj.get("actor"),
+            "team": obj.get("team"),
             "turn": obj.get("turn"),
             "timestamp": obj.get("timestamp")
         })

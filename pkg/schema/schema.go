@@ -51,6 +51,8 @@ type RequestContext struct {
 	SessionID string    `json:"session_id"`
 	Model     string    `json:"model,omitempty"`
 	Agent     string    `json:"agent,omitempty"`
+	Actor     string    `json:"actor,omitempty"`
+	Team      string    `json:"team,omitempty"`
 	Turn      int       `json:"turn"`
 	Timestamp time.Time `json:"timestamp"`
 }

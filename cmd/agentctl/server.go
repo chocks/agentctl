@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,6 +39,10 @@ type approvalListResponse struct {
 func cmdServe() {
 	addr := stringFlagValue("--addr", "127.0.0.1:8080")
 	server := newServer()
+	if !isLoopbackListenAddr(addr) && server.authToken == "" {
+		fmt.Fprintln(os.Stderr, "error: non-loopback listen addresses require AGENTCTL_AUTH_TOKEN or --auth-token")
+		os.Exit(1)
+	}
 
 	fmt.Fprintf(os.Stderr, "agentctl server listening on http://%s\n", addr)
 	if err := http.ListenAndServe(addr, server.routes()); err != nil {
@@ -49,12 +54,14 @@ func cmdServe() {
 type apiServer struct {
 	traceFile  string
 	policyFile string
+	authToken  string
 }
 
 func newServer() *apiServer {
 	return &apiServer{
 		traceFile:  traceFilePath(),
 		policyFile: defaultPolicyFile,
+		authToken:  authTokenValue(),
 	}
 }
 
@@ -66,7 +73,7 @@ func (s *apiServer) routes() http.Handler {
 	mux.HandleFunc("/v1/replay", s.handleReplay)
 	mux.HandleFunc("/v1/approvals", s.handleApprovals)
 	mux.HandleFunc("/v1/approvals/", s.handleApprovalResolution)
-	return mux
+	return s.withAuth(mux)
 }
 
 func (s *apiServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +103,12 @@ func (s *apiServer) handleGate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Context.Agent == "" {
 		req.Context.Agent = "agentctl-http"
+	}
+	if req.Context.Actor == "" {
+		req.Context.Actor = r.Header.Get("X-Agentctl-Actor")
+	}
+	if req.Context.Team == "" {
+		req.Context.Team = r.Header.Get("X-Agentctl-Team")
 	}
 	if req.Context.Timestamp.IsZero() {
 		req.Context.Timestamp = now
@@ -314,4 +327,41 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *apiServer) withAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.authToken == "" || r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		authHeader := r.Header.Get("Authorization")
+		expected := "Bearer " + s.authToken
+		if authHeader != expected {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func authTokenValue() string {
+	if token := stringFlagValue("--auth-token", ""); token != "" {
+		return token
+	}
+	return os.Getenv("AGENTCTL_AUTH_TOKEN")
+}
+
+func isLoopbackListenAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" || host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

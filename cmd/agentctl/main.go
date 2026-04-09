@@ -298,10 +298,12 @@ Approval commands:
 
 Serve flags:
   --addr <host:port>   Listen address (default 127.0.0.1:8080)
+  --auth-token <token> Require bearer auth for the HTTP API
 
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path
   AGENTCTL_APPROVAL_FILE Override the approvals file path
+  AGENTCTL_AUTH_TOKEN  Bearer token for the HTTP API
   AGENTCTL_HOME        Override the trace home directory`)
 }
 

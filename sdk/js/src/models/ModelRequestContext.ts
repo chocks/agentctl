@@ -39,6 +39,18 @@ export interface ModelRequestContext {
     agent?: string;
     /**
      * 
+     * @type {string}
+     * @memberof ModelRequestContext
+     */
+    actor?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelRequestContext
+     */
+    team?: string;
+    /**
+     * 
      * @type {number}
      * @memberof ModelRequestContext
      */
@@ -73,6 +85,8 @@ export function ModelRequestContextFromJSONTyped(json: any, ignoreDiscriminator:
         'sessionId': json['session_id'],
         'model': json['model'] == null ? undefined : json['model'],
         'agent': json['agent'] == null ? undefined : json['agent'],
+        'actor': json['actor'] == null ? undefined : json['actor'],
+        'team': json['team'] == null ? undefined : json['team'],
         'turn': json['turn'] == null ? undefined : json['turn'],
         'timestamp': (new Date(json['timestamp'])),
     };
@@ -87,6 +101,8 @@ export function ModelRequestContextToJSON(value?: ModelRequestContext | null): a
         'session_id': value['sessionId'],
         'model': value['model'],
         'agent': value['agent'],
+        'actor': value['actor'],
+        'team': value['team'],
         'turn': value['turn'],
         'timestamp': ((value['timestamp']).toISOString()),
     };

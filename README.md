@@ -51,6 +51,26 @@ go run ./cmd/agentctl replay demo-1 --policy agentctl.policy.yaml
 
 Traces are stored in `~/.agentctl/traces.jsonl` by default. Set `AGENTCTL_HOME` or `AGENTCTL_TRACE_FILE` to override that location.
 
+## Local API
+
+Run the local API:
+
+```bash
+go run ./cmd/agentctl serve
+```
+
+If you bind beyond loopback, `agentctl` now requires bearer auth:
+
+```bash
+AGENTCTL_AUTH_TOKEN=dev-secret go run ./cmd/agentctl serve --addr 0.0.0.0:8080
+```
+
+The server also supports multi-user metadata injection through trusted headers:
+
+- `Authorization: Bearer <token>`
+- `X-Agentctl-Actor: alice`
+- `X-Agentctl-Team: platform`
+
 ## Policy File
 
 `agentctl` loads `agentctl.policy.yaml` from the repo root by default.

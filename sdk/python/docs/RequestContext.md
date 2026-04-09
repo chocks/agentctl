@@ -8,6 +8,8 @@ Name | Type | Description | Notes
 **session_id** | **str** |  | 
 **model** | **str** |  | [optional] 
 **agent** | **str** |  | [optional] 
+**actor** | **str** |  | [optional] 
+**team** | **str** |  | [optional] 
 **turn** | **int** |  | [optional] 
 **timestamp** | **datetime** |  | 
 

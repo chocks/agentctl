@@ -14,6 +14,7 @@ func TestServerGateTraceReplay(t *testing.T) {
 	server := &apiServer{
 		traceFile:  filepath.Join(t.TempDir(), "traces.jsonl"),
 		policyFile: policyPath,
+		authToken:  "secret-token",
 	}
 
 	writeFile(t, policyPath, `
@@ -31,6 +32,17 @@ actions:
 	rec := httptest.NewRecorder()
 	server.routes().ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized without bearer token, got status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/gate", gateBody)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	req.Header.Set("X-Agentctl-Actor", "alice")
+	req.Header.Set("X-Agentctl-Team", "platform")
+	rec = httptest.NewRecorder()
+	server.routes().ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusOK {
 		t.Fatalf("gate status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -40,6 +52,8 @@ actions:
 		Request struct {
 			Context struct {
 				SessionID string `json:"session_id"`
+				Actor     string `json:"actor"`
+				Team      string `json:"team"`
 			} `json:"context"`
 		} `json:"request"`
 	}
@@ -52,8 +66,12 @@ actions:
 	if decision.Request.Context.SessionID != "srv-1" {
 		t.Fatalf("expected session id srv-1, got %q", decision.Request.Context.SessionID)
 	}
+	if decision.Request.Context.Actor != "alice" || decision.Request.Context.Team != "platform" {
+		t.Fatalf("expected actor/team alice/platform, got %q/%q", decision.Request.Context.Actor, decision.Request.Context.Team)
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/approvals?status=pending", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
 	rec = httptest.NewRecorder()
 	server.routes().ServeHTTP(rec, req)
 
@@ -72,6 +90,7 @@ actions:
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/traces?session_id=srv-1", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
 	rec = httptest.NewRecorder()
 	server.routes().ServeHTTP(rec, req)
 
@@ -99,6 +118,7 @@ actions:
 
 	replayBody := bytes.NewBufferString(`{"session_id":"srv-1","policy_path":"` + replayPath + `"}`)
 	req = httptest.NewRequest(http.MethodPost, "/v1/replay", replayBody)
+	req.Header.Set("Authorization", "Bearer secret-token")
 	rec = httptest.NewRecorder()
 	server.routes().ServeHTTP(rec, req)
 

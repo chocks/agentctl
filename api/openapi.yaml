@@ -21,6 +21,8 @@ paths:
       tags: [gate]
       operationId: gateAction
       summary: Evaluate a risky action against policy
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -39,6 +41,8 @@ paths:
       tags: [trace]
       operationId: listTraces
       summary: List or search traces
+      security:
+        - bearerAuth: []
       parameters:
         - in: query
           name: session_id
@@ -83,6 +87,8 @@ paths:
       tags: [replay]
       operationId: replaySession
       summary: Re-evaluate a recorded session with a given policy
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -97,6 +103,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReplayResponse"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     Action:
       type: string
@@ -124,6 +134,10 @@ components:
         model:
           type: string
         agent:
+          type: string
+        actor:
+          type: string
+        team:
           type: string
         turn:
           type: integer
