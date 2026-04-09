@@ -50,6 +50,8 @@ func main() {
 		}
 	case "hook":
 		cmdHook()
+	case "mcp":
+		cmdMCP()
 	case "replay":
 		cmdReplay()
 	case "approval":
@@ -272,6 +274,7 @@ Usage:
   agentctl approval [subcommand]   List or resolve escalations
   agentctl serve [--addr host:port] Run local HTTP API
   agentctl hook <type>             Tool hook adapter (e.g. claude-code)
+  agentctl mcp                     Run as an MCP server (stdio, JSON-RPC 2.0)
   agentctl version                 Print version
 
 Gate reads an ActionRequest from stdin and outputs a Decision.
@@ -311,6 +314,14 @@ Hook flags:
   --agent <name>       Agent name to annotate traces (default: hook type)
   --model <name>       Model name to annotate traces
   --session <id>       Override session id (default: from hook event)
+
+MCP flags:
+  --agent <name>       Agent name to annotate traces (default: agentctl-mcp)
+  --model <name>       Model name to annotate traces
+
+MCP environment:
+  AGENTCTL_SESSION     Override session id for MCP tool calls
+  See docs/mcp.md for Claude Code and Codex CLI setup.
 
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path

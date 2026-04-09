@@ -26,6 +26,7 @@ actions:
       - "api.openai.com"
 `)
 	t.Setenv("AGENTCTL_TRACE_FILE", server.traceFile)
+	t.Setenv("AGENTCTL_APPROVAL_FILE", t.TempDir()+"/approvals.jsonl")
 
 	gateBody := bytes.NewBufferString(`{"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call provider","context":{"session_id":"srv-1"}}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/gate", gateBody)
