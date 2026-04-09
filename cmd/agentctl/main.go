@@ -1,0 +1,359 @@
+// agentctl CLI — the simplest possible entry point.
+//
+// Usage:
+//
+//	echo '{"action":"install_package","params":{...},"reason":"..."}' | agentctl gate
+//	agentctl trace list --last 20
+//	agentctl trace search --action install_package --since 7d
+//	agentctl replay <session_id> --policy new.policy.yaml
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/agentctl/agentctl/pkg/gate"
+	"github.com/agentctl/agentctl/pkg/policy"
+	"github.com/agentctl/agentctl/pkg/schema"
+	"github.com/agentctl/agentctl/pkg/trace"
+)
+
+const defaultTraceFile = ".agentctl/traces.jsonl"
+const defaultPolicyFile = "agentctl.policy.yaml"
+
+func main() {
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	switch os.Args[1] {
+	case "gate":
+		cmdGate()
+	case "trace":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: agentctl trace [list|search]")
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "list":
+			cmdTraceList()
+		case "search":
+			cmdTraceSearch()
+		default:
+			fmt.Fprintf(os.Stderr, "unknown trace command: %s\n", os.Args[2])
+			os.Exit(1)
+		}
+	case "replay":
+		cmdReplay()
+	case "version":
+		fmt.Println("agentctl v0.1.0")
+	case "help", "--help", "-h":
+		printUsage()
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
+		printUsage()
+		os.Exit(1)
+	}
+}
+
+func cmdGate() {
+	// Load policy
+	pol := loadPolicy()
+
+	// Set up trace store
+	ensureDir(".agentctl")
+	tracer, err := trace.NewFileStore(defaultTraceFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create gate
+	g := gate.New(pol, tracer)
+
+	// Read action request from stdin
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
+		os.Exit(1)
+	}
+
+	var req schema.ActionRequest
+	if err := json.Unmarshal(input, &req); err != nil {
+		fmt.Fprintf(os.Stderr, "error parsing request: %v\n", err)
+		os.Exit(1)
+	}
+
+	now := time.Now()
+
+	// Inject context (CLI sets these, not the caller)
+	req.Context = schema.RequestContext{
+		SessionID: stringFlagValue("--session", fmt.Sprintf("cli_%d", now.UnixMilli())),
+		Model:     stringFlagValue("--model", ""),
+		Agent:     stringFlagValue("--agent", "agentctl-cli"),
+		Timestamp: now,
+	}
+
+	// Evaluate
+	decision, err := g.Evaluate(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Output decision as JSON
+	out, err := json.MarshalIndent(decision, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error encoding decision: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(out))
+
+	// Exit code reflects verdict
+	switch decision.Verdict {
+	case schema.VerdictAllow:
+		os.Exit(0)
+	case schema.VerdictDeny:
+		os.Exit(1)
+	case schema.VerdictEscalate:
+		os.Exit(2)
+	}
+}
+
+func cmdTraceList() {
+	limit := 20
+	// Simple flag parsing
+	for i, arg := range os.Args {
+		if arg == "--last" && i+1 < len(os.Args) {
+			if _, err := fmt.Sscanf(os.Args[i+1], "%d", &limit); err != nil {
+				fmt.Fprintf(os.Stderr, "invalid --last value %q: %v\n", os.Args[i+1], err)
+				os.Exit(1)
+			}
+		}
+	}
+
+	traces, err := trace.ReadTraces(defaultTraceFile, trace.TraceFilter{Limit: limit})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Print as table
+	fmt.Printf("%-20s %-20s %-10s %-5s %s\n", "TIME", "ACTION", "VERDICT", "RISK", "REASON")
+	fmt.Println(repeat("-", 90))
+	for _, t := range traces {
+		fmt.Printf("%-20s %-20s %-10s %-5d %s\n",
+			t.Timestamp.Format("15:04:05"),
+			t.Request.Action,
+			t.Verdict,
+			t.RiskScore,
+			truncate(t.Reason, 40),
+		)
+	}
+	fmt.Printf("\n%d traces shown\n", len(traces))
+}
+
+func cmdTraceSearch() {
+	filter := trace.TraceFilter{}
+	for i, arg := range os.Args {
+		if i+1 >= len(os.Args) {
+			break
+		}
+		switch arg {
+		case "--action":
+			filter.Action = schema.Action(os.Args[i+1])
+		case "--verdict":
+			filter.Verdict = schema.Verdict(os.Args[i+1])
+		case "--package":
+			filter.Package = os.Args[i+1]
+		case "--since":
+			if d, err := parseDuration(os.Args[i+1]); err == nil {
+				filter.Since = time.Now().Add(-d)
+			}
+		case "--limit":
+			if _, err := fmt.Sscanf(os.Args[i+1], "%d", &filter.Limit); err != nil {
+				fmt.Fprintf(os.Stderr, "invalid --limit value %q: %v\n", os.Args[i+1], err)
+				os.Exit(1)
+			}
+		}
+	}
+
+	traces, err := trace.ReadTraces(defaultTraceFile, filter)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, t := range traces {
+		out, err := json.MarshalIndent(t, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error encoding trace: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(out))
+	}
+	fmt.Fprintf(os.Stderr, "\n%d traces found\n", len(traces))
+}
+
+func cmdReplay() {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: agentctl replay <session_id> [--policy file] [--limit N]")
+		os.Exit(1)
+	}
+
+	sessionID := os.Args[2]
+	policyFile := stringFlagValue("--policy", defaultPolicyFile)
+	limit := intFlagValue("--limit", 0)
+
+	pol := loadPolicyFromPath(policyFile)
+	filter := trace.TraceFilter{
+		SessionID: sessionID,
+		Limit:     limit,
+	}
+
+	traces, err := trace.ReadTraces(defaultTraceFile, filter)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(traces) == 0 {
+		fmt.Fprintf(os.Stderr, "no traces found for session %q\n", sessionID)
+		os.Exit(1)
+	}
+
+	sort.Slice(traces, func(i, j int) bool {
+		return traces[i].Timestamp.Before(traces[j].Timestamp)
+	})
+
+	results := make([]schema.Decision, 0, len(traces))
+	for _, prior := range traces {
+		result := pol.Evaluate(prior.Request)
+		results = append(results, schema.Decision{
+			TraceID:        prior.TraceID,
+			Verdict:        result.Verdict,
+			RiskScore:      result.RiskScore,
+			Timestamp:      time.Now(),
+			Request:        prior.Request,
+			Reason:         result.Reason,
+			MatchedRules:   result.MatchedRules,
+			EvalDurationMs: 0,
+		})
+	}
+
+	out, err := json.MarshalIndent(struct {
+		SessionID string            `json:"session_id"`
+		Policy    string            `json:"policy"`
+		Results   []schema.Decision `json:"results"`
+	}{
+		SessionID: sessionID,
+		Policy:    policyFile,
+		Results:   results,
+	}, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error encoding replay results: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(out))
+}
+
+func loadPolicy() *policy.Engine {
+	return loadPolicyFromPath(defaultPolicyFile)
+}
+
+func loadPolicyFromPath(path string) *policy.Engine {
+	if _, err := os.Stat(path); err == nil {
+		pol, err := policy.LoadFromFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to load %s: %v (using defaults)\n", path, err)
+			return policy.DefaultEngine()
+		}
+		return pol
+	}
+	return policy.DefaultEngine()
+}
+
+func printUsage() {
+	fmt.Println(`agentctl — trace and control dangerous agent actions
+
+Usage:
+  agentctl gate [--session id]     Evaluate an action (JSON from stdin)
+  agentctl trace list [--last N]   Show recent traces
+  agentctl trace search [filters]  Search traces
+  agentctl replay <session_id>     Re-evaluate a session with a policy file
+  agentctl version                 Print version
+
+Gate reads an ActionRequest from stdin and outputs a Decision.
+Exit codes: 0=allow, 1=deny, 2=escalate
+
+Search filters:
+  --action <action>    Filter by action type
+  --verdict <verdict>  Filter by verdict (allow/deny/escalate)
+  --package <name>     Filter install_package by package name
+  --since <duration>   Filter by time (e.g., 7d, 24h)
+  --limit <n>          Max results
+
+Gate flags:
+  --session <id>       Reuse a session id across actions
+  --agent <name>       Annotate the trace with an agent name
+  --model <name>       Annotate the trace with a model name
+
+Replay flags:
+  --policy <file>      Policy file to use for replay
+  --limit <n>          Max traces to replay`)
+}
+
+func ensureDir(path string) {
+	if err := os.MkdirAll(path, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating %s: %v\n", path, err)
+		os.Exit(1)
+	}
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
+}
+
+func repeat(s string, n int) string {
+	return strings.Repeat(s, n)
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	// Support "7d" style durations
+	if len(s) > 0 && s[len(s)-1] == 'd' {
+		var days int
+		if _, err := fmt.Sscanf(s, "%dd", &days); err == nil {
+			return time.Duration(days) * 24 * time.Hour, nil
+		}
+	}
+	return time.ParseDuration(s)
+}
+
+func stringFlagValue(name, fallback string) string {
+	for i, arg := range os.Args {
+		if arg == name && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+	}
+	return fallback
+}
+
+func intFlagValue(name string, fallback int) int {
+	for i, arg := range os.Args {
+		if arg == name && i+1 < len(os.Args) {
+			var value int
+			if _, err := fmt.Sscanf(os.Args[i+1], "%d", &value); err == nil {
+				return value
+			}
+		}
+	}
+	return fallback
+}

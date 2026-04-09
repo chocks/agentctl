@@ -1,0 +1,44 @@
+# agentctl.policy.yaml
+#
+# Drop this in your repo root. agentctl loads it automatically.
+# Only govern the risky stuff — don't gate every tool call.
+
+actions:
+  install_package:
+    require_hashes: true       # deny installs without hash verification
+    require_lockfile: true     # must come from a lockfile
+    # max_publish_age_hours: 72  # quarantine packages < 72h old (v2)
+
+  run_code:
+    block_patterns:
+      - "| bash"
+      - "| sh"
+      - "curl | python"
+      - "wget | python"
+    network: deny              # no egress during code execution
+
+  access_secret:
+    require_approval: always   # human must approve every secret access
+    max_ttl: 300               # 5 minute token lifetime
+
+  write_file:
+    # No restrictions for v1 — just trace everything
+    require_approval: never
+
+  call_external_api:
+    allowed_domains:
+      - "*.github.com"
+      - "*.pypi.org"
+      - "*.npmjs.org"
+      - "docs.python.org"
+      - "api.openai.com"
+      - "api.anthropic.com"
+    blocked_domains:
+      - "*.litellm.cloud"     # known exfil domain from LiteLLM incident
+      - "*.checkmarx.zone"    # known exfil domain from LiteLLM incident
+
+notifications:
+  escalation:
+    - slack: "#agent-approvals"
+  denial:
+    - slack: "#agent-security"

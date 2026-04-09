@@ -1,0 +1,13 @@
+.agentctl/
+.cache/
+.tmp/
+
+# Go build outputs
+bin/
+dist/
+*.test
+*.out
+coverage.out
+
+# IDE / OS noise
+.DS_Store
