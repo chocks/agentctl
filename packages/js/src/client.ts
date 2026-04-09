@@ -97,14 +97,24 @@ export class AgentctlClient {
 function mergeContext(
   defaults?: Partial<ModelRequestContext>,
   input?: Partial<ModelRequestContext>,
-): ModelRequestContext | undefined {
-  const merged = {
+): ModelRequestContext {
+  const merged: Partial<ModelRequestContext> = {
     ...defaults,
     ...input,
   };
 
-  if (!merged.sessionId || !merged.timestamp) {
-    return undefined;
+  if (!merged.sessionId) {
+    // Synthesize an ephemeral session id rather than silently dropping context.
+    // Callers should set defaultContext.sessionId for reliable trace correlation.
+    console.warn(
+      "[agentctl] warning: no session_id provided — using ephemeral id. " +
+        "Set defaultContext.sessionId for reliable trace correlation.",
+    );
+    merged.sessionId = `ephemeral-${Date.now()}`;
+  }
+
+  if (!merged.timestamp) {
+    merged.timestamp = new Date();
   }
 
   return merged as ModelRequestContext;

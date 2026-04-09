@@ -22,9 +22,8 @@ import (
 // Config is the top-level policy configuration.
 // Lives in agentctl.policy.yaml in the user's repo.
 type Config struct {
-	Actions       map[string]ActionPolicy `yaml:"actions"`
-	Notifications *NotificationConfig     `yaml:"notifications,omitempty"`
-	Trust         *TrustConfig            `yaml:"trust,omitempty"`
+	Actions map[string]ActionPolicy `yaml:"actions"`
+	Trust   *TrustConfig            `yaml:"trust,omitempty"`
 }
 
 type ActionPolicy struct {
@@ -48,16 +47,6 @@ type ActionPolicy struct {
 
 	// Override risk
 	BaseRisk *int `yaml:"base_risk,omitempty"` // override default
-}
-
-type NotificationConfig struct {
-	Escalation []NotifyTarget `yaml:"escalation,omitempty"`
-	Denial     []NotifyTarget `yaml:"denial,omitempty"`
-}
-
-type NotifyTarget struct {
-	Slack   string `yaml:"slack,omitempty"`
-	Webhook string `yaml:"webhook,omitempty"`
 }
 
 type TrustConfig struct {

@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/agentctl/agentctl/pkg/schema"
@@ -45,10 +45,10 @@ func approvalFilePath() string {
 			fmt.Fprintf(os.Stderr, "error resolving user home directory: %v\n", err)
 			os.Exit(1)
 		}
-		home = filepathJoin(userHome, ".agentctl")
+		home = filepath.Join(userHome, ".agentctl")
 	}
 
-	return filepathJoin(home, "approvals.jsonl")
+	return filepath.Join(home, "approvals.jsonl")
 }
 
 func recordApprovalForDecision(path string, decision *schema.Decision) error {
@@ -68,7 +68,7 @@ func recordApprovalForDecision(path string, decision *schema.Decision) error {
 }
 
 func appendApproval(path string, record approvalRecord) error {
-	ensureDir(filepathDir(path))
+	ensureDir(filepath.Dir(path))
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -215,17 +215,4 @@ func cmdApprovalResolve(status approvalStatus) {
 		os.Exit(1)
 	}
 	fmt.Println(string(out))
-}
-
-func filepathJoin(base string, elems ...string) string {
-	parts := append([]string{base}, elems...)
-	return strings.Join(parts, string(os.PathSeparator))
-}
-
-func filepathDir(path string) string {
-	idx := strings.LastIndex(path, string(os.PathSeparator))
-	if idx <= 0 {
-		return "."
-	}
-	return path[:idx]
 }

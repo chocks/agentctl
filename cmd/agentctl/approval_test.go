@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -8,7 +9,7 @@ import (
 )
 
 func TestRecordAndResolveApproval(t *testing.T) {
-	path := filepathJoin(t.TempDir(), "approvals.jsonl")
+	path := filepath.Join(t.TempDir(), "approvals.jsonl")
 	decision := &schema.Decision{
 		TraceID:          "trace-1",
 		Timestamp:        time.Now(),

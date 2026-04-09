@@ -48,6 +48,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "unknown trace command: %s\n", os.Args[2])
 			os.Exit(1)
 		}
+	case "hook":
+		cmdHook()
 	case "replay":
 		cmdReplay()
 	case "approval":
@@ -269,6 +271,7 @@ Usage:
   agentctl replay <session_id>     Re-evaluate a session with a policy file
   agentctl approval [subcommand]   List or resolve escalations
   agentctl serve [--addr host:port] Run local HTTP API
+  agentctl hook <type>             Tool hook adapter (e.g. claude-code)
   agentctl version                 Print version
 
 Gate reads an ActionRequest from stdin and outputs a Decision.
@@ -299,6 +302,15 @@ Approval commands:
 Serve flags:
   --addr <host:port>   Listen address (default 127.0.0.1:8080)
   --auth-token <token> Require bearer auth for the HTTP API
+
+Hook types:
+  claude-code          PreToolUse adapter for Claude Code
+                       See docs/claude-code.md for setup instructions
+
+Hook flags:
+  --agent <name>       Agent name to annotate traces (default: hook type)
+  --model <name>       Model name to annotate traces
+  --session <id>       Override session id (default: from hook event)
 
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path
