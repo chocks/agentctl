@@ -31,9 +31,31 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG_NAME#v}"
+          if ! grep -qE "^## \[?${VERSION}\]?" CHANGELOG.md; then
+            echo "::error::No CHANGELOG.md section found for ${VERSION}. Add a '## [${VERSION}] - YYYY-MM-DD' heading before tagging."
+            exit 1
+          fi
+          NOTES=$(awk -v v="${VERSION}" '
+            $0 ~ "^## \\[?" v "\\]?" { flag=1; next }
+            flag && /^## / { exit }
+            flag && /^\[[^]]*\]: / { next }
+            flag { print }
+          ' CHANGELOG.md)
+          {
+            echo "RELEASE_NOTES<<NOTES_EOF"
+            echo "$NOTES"
+            echo "NOTES_EOF"
+          } >> "$GITHUB_ENV"
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
