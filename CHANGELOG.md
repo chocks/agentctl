@@ -11,6 +11,16 @@ notes automatically.
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-04-11
+
+### Changed
+
+- Release notes for each tagged release are now sourced from the matching
+  `[<version>]` section in `CHANGELOG.md` and injected into the GitHub Release
+  header.
+- The auto-generated commit changelog now groups commits into **Features**,
+  **Bug fixes**, and **Other** sections.
+
 ## [0.0.1] - 2026-04-11
 
 First tagged release of agentctl — a small Go toolkit for gating, tracing, and
@@ -35,5 +45,6 @@ replaying high-risk agent actions.
 - **Release pipeline** — cross-platform binaries for linux, darwin, windows
   across amd64 and arm64, built and published via goreleaser.
 
-[Unreleased]: https://github.com/chocks/agentctl/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/chocks/agentctl/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/chocks/agentctl/releases/tag/v0.0.2
 [0.0.1]: https://github.com/chocks/agentctl/releases/tag/v0.0.1
