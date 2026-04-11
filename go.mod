@@ -1,4 +1,4 @@
-module github.com/agentctl/agentctl
+module github.com/chocks/agentctl
 
 go 1.23.0
 
