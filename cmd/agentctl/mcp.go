@@ -73,12 +73,6 @@ const (
 
 // ── MCP protocol types ───────────────────────────────────────────────────────
 
-type mcpInitializeParams struct {
-	ProtocolVersion string            `json:"protocolVersion"`
-	Capabilities    map[string]any    `json:"capabilities"`
-	ClientInfo      mcpImplementation `json:"clientInfo"`
-}
-
 type mcpImplementation struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`

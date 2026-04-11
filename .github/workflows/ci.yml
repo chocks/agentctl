@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  lint:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,28 +19,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: golangci/golangci-lint-action@v7
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Run tests
-        run: go test -race ./...
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build binary
-        run: go build ./cmd/agentctl
+      - run: make ci
