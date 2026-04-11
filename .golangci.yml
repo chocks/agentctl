@@ -4,4 +4,4 @@ linters:
   default: standard
 
 issues:
-  exclude-use-default: false
+  exclude-default-patterns: false
