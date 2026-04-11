@@ -22,7 +22,7 @@ build:
 ci: fmt lint test build
 
 install-tools:
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 
 install:
 	go install -ldflags "$(LDFLAGS)" ./cmd/agentctl
