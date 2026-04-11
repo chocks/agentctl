@@ -2,76 +2,107 @@
 
 Trace and control dangerous agent actions.
 
-`agentctl` is a focused v1 control layer for coding agents. It gates a small set of high-risk actions, records structured traces for every decision, and replays prior sessions against a different policy.
+`agentctl` gates a small set of high-risk actions, records structured traces for every decision, and replays prior sessions against different policies. Three primitives: **gate**, **trace**, **replay**.
 
-The current implementation is a small Go CLI with:
+## Agent Install
 
-- `gate`: evaluate one risky action against policy
-- `trace`: inspect prior decisions from the local trace store
-- `replay`: re-run a recorded session with another policy file
+Paste this prompt into your coding agent (Claude Code, Cursor, Copilot, etc.) and it will install and configure `agentctl` for your project:
 
-The repo is now also set up to be schema-first for future SDKs:
+<details>
+<summary><b>Copy the agent prompt</b></summary>
 
-- [`api/openapi.yaml`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/api/openapi.yaml) is the cross-language API contract
-- `pkg/schema` remains the Go runtime model
-- JS and Python clients should be generated from the OpenAPI spec
+```text
+Install and configure agentctl in this project. Follow these steps exactly:
 
-## Scope
+1. Check prerequisites:
+   - Verify Go >= 1.23 is installed (`go version`). If not, tell me to install Go first and stop.
+   - Verify git is available.
 
-This repo intentionally covers only the dangerous operations:
+2. Install the agentctl binary:
+   - Run: go install github.com/chocks/agentctl/cmd/agentctl@latest
+   - Verify it works: agentctl version
 
-- `install_package`
-- `run_code`
-- `access_secret`
-- `write_file`
-- `call_external_api`
+3. Create a starter policy file `agentctl.policy.yaml` in the project root with these defaults:
 
-Everything else stays out of the control path for now.
+   actions:
+     install_package:
+       require_hashes: true
+       require_lockfile: true
+     run_code:
+       block_patterns:
+         - "| bash"
+         - "| sh"
+         - "curl | python"
+         - "wget | python"
+       network: deny
+     access_secret:
+       require_approval: always
+       max_ttl: 300
+     write_file:
+       require_approval: never
+     call_external_api:
+       allowed_domains:
+         - "*.github.com"
+         - "*.pypi.org"
+         - "*.npmjs.org"
+
+4. Verify the setup by running a test gate call:
+   echo '{"action":"install_package","params":{"manager":"pip","package":"requests","version":"2.31.0","hash":"sha256:abc","pinned":true},"reason":"HTTP client"}' | agentctl gate
+
+   This should return a JSON decision with verdict "allow".
+
+5. Print a summary of what was installed and where traces will be stored (~/.agentctl/traces.jsonl).
+```
+
+</details>
+
+## Governed Actions
+
+| Action | What it covers |
+|---|---|
+| `install_package` | pip, npm, cargo, go installs |
+| `run_code` | shell execution, script runs |
+| `access_secret` | reading secrets, tokens, credentials |
+| `write_file` | file creation, overwrites, appends |
+| `call_external_api` | outbound HTTP to external services |
+
+Everything else stays out of the control path.
 
 ## Quick Start
 
 ```bash
-make fmt
 go run ./cmd/agentctl gate <<'EOF'
 {"action":"install_package","params":{"manager":"pip","package":"requests","version":"2.31.0","hash":"sha256:abc","pinned":true},"reason":"HTTP client"}
 EOF
 ```
 
-Example with a stable session id for replay:
+With a session id for replay:
 
 ```bash
 go run ./cmd/agentctl gate --session demo-1 <<'EOF'
 {"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call model provider"}
 EOF
-```
 
-```bash
 go run ./cmd/agentctl replay demo-1 --policy agentctl.policy.yaml
 ```
 
-Traces are stored in `~/.agentctl/traces.jsonl` by default. Set `AGENTCTL_HOME` or `AGENTCTL_TRACE_FILE` to override that location.
+Traces are stored in `~/.agentctl/traces.jsonl`. Override with `AGENTCTL_HOME` or `AGENTCTL_TRACE_FILE`.
 
 ## Local API
-
-Run the local API:
 
 ```bash
 go run ./cmd/agentctl serve
 ```
 
-Then open `http://127.0.0.1:8080/ui` for a small local traces, approvals, and replay UI.
+Open `http://127.0.0.1:8080/ui` for local traces, approvals, and replay UI.
 
-If you bind beyond loopback, `agentctl` now requires bearer auth:
+For non-loopback, bearer auth is required:
 
 ```bash
 AGENTCTL_AUTH_TOKEN=dev-secret go run ./cmd/agentctl serve --addr 0.0.0.0:8080
 ```
 
-The server also supports multi-user metadata injection through trusted headers:
-
-- `Authorization: Bearer <token>`
-- `X-Agentctl-Actor: alice`
-- `X-Agentctl-Team: platform`
+Multi-user headers: `Authorization: Bearer <token>`, `X-Agentctl-Actor`, `X-Agentctl-Team`.
 
 ## Policy File
 
@@ -94,48 +125,26 @@ actions:
     max_ttl: 300
 ```
 
-## Development
+## SDK Clients
 
-This repo follows basic Go hygiene by default:
-
-- format with `gofmt`
-- keep packages small and standard-library first
-- test core policy and trace behavior
-- lint with `golangci-lint`
-
-Common commands:
-
-```bash
-make fmt
-make lint
-make test
-make build
-```
-
-## SDK Codegen
-
-To avoid hand-maintaining JS and Python models, use the OpenAPI contract in [`api/openapi.yaml`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/api/openapi.yaml).
-
-Planned generation flow:
+The OpenAPI contract in `api/openapi.yaml` is the source of truth for generated clients.
 
 ```bash
 npm install
-make codegen-js
-make codegen-py
+make codegen-js    # → sdk/js
+make codegen-py    # → sdk/python
 ```
 
-The generator is managed as a local dev dependency in [`package.json`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/package.json). The design note is in [`docs/codegen.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/docs/codegen.md).
+Higher-level wrappers: `packages/js`, `packages/python`. Node quickstart: `examples/node/README.md`.
 
-Generated clients live in:
+## Development
 
-- [`sdk/js`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/sdk/js)
-- [`sdk/python`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/sdk/python)
-
-For a higher-level JavaScript package over the generated SDK, see [`packages/js`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/packages/js).
-
-For a matching higher-level Python package, see [`packages/python`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/packages/python).
-
-For the easiest Node adoption path, see [`examples/node/README.md`](/Users/chockalingameswaramurthy/Documents/repos/agentctl/examples/node/README.md).
+```bash
+make fmt      # gofmt
+make lint     # golangci-lint
+make test     # go test ./...
+make build    # go build ./...
+```
 
 ## Project Layout
 
@@ -145,16 +154,8 @@ pkg/schema       canonical action and decision types
 pkg/policy       YAML policy engine
 pkg/gate         gate() primitive
 pkg/trace        append-only JSONL trace store
+api/openapi.yaml cross-language API contract
 ```
-
-## Status
-
-This is a tightened bootstrap, not a full platform:
-
-- local JSONL traces instead of SQLite/Postgres
-- CLI replay only, not full simulation tooling
-- YAML policy rules, not a full policy DSL
-- no JS/Python SDKs yet
 
 ## License
 

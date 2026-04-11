@@ -51,6 +51,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, "unknown trace command: %s\n", os.Args[2])
 			os.Exit(1)
 		}
+	case "hook":
+		cmdHook()
+	case "mcp":
+		cmdMCP()
 	case "replay":
 		cmdReplay()
 	case "approval":
@@ -69,11 +73,9 @@ func main() {
 }
 
 func cmdGate() {
-	// Load policy
 	pol := loadPolicy()
 	traceFile := traceFilePath()
 
-	// Set up trace store
 	ensureDir(filepath.Dir(traceFile))
 	tracer, err := trace.NewFileStore(traceFile)
 	if err != nil {
@@ -81,10 +83,8 @@ func cmdGate() {
 		os.Exit(1)
 	}
 
-	// Create gate
 	g := gate.New(pol, tracer)
 
-	// Read action request from stdin
 	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
@@ -98,8 +98,6 @@ func cmdGate() {
 	}
 
 	now := time.Now()
-
-	// Inject context (CLI sets these, not the caller)
 	req.Context = schema.RequestContext{
 		SessionID: stringFlagValue("--session", fmt.Sprintf("cli_%d", now.UnixMilli())),
 		Model:     stringFlagValue("--model", ""),
@@ -107,7 +105,6 @@ func cmdGate() {
 		Timestamp: now,
 	}
 
-	// Evaluate
 	decision, err := g.Evaluate(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -118,7 +115,6 @@ func cmdGate() {
 		os.Exit(1)
 	}
 
-	// Output decision as JSON
 	out, err := json.MarshalIndent(decision, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error encoding decision: %v\n", err)
@@ -126,7 +122,6 @@ func cmdGate() {
 	}
 	fmt.Println(string(out))
 
-	// Exit code reflects verdict
 	switch decision.Verdict {
 	case schema.VerdictAllow:
 		os.Exit(0)
@@ -157,7 +152,7 @@ func cmdTraceList() {
 
 	// Print as table
 	fmt.Printf("%-20s %-20s %-10s %-5s %s\n", "TIME", "ACTION", "VERDICT", "RISK", "REASON")
-	fmt.Println(repeat("-", 90))
+	fmt.Println(strings.Repeat("-", 90))
 	for _, t := range traces {
 		fmt.Printf("%-20s %-20s %-10s %-5d %s\n",
 			t.Timestamp.Format("15:04:05"),
@@ -272,6 +267,8 @@ Usage:
   agentctl replay <session_id>     Re-evaluate a session with a policy file
   agentctl approval [subcommand]   List or resolve escalations
   agentctl serve [--addr host:port] Run local HTTP API
+  agentctl hook <type>             Tool hook adapter (e.g. claude-code)
+  agentctl mcp                     Run as an MCP server (stdio, JSON-RPC 2.0)
   agentctl version                 Print version
 
 Gate reads an ActionRequest from stdin and outputs a Decision.
@@ -303,6 +300,23 @@ Serve flags:
   --addr <host:port>   Listen address (default 127.0.0.1:8080)
   --auth-token <token> Require bearer auth for the HTTP API
 
+Hook types:
+  claude-code          PreToolUse adapter for Claude Code
+                       See docs/claude-code.md for setup instructions
+
+Hook flags:
+  --agent <name>       Agent name to annotate traces (default: hook type)
+  --model <name>       Model name to annotate traces
+  --session <id>       Override session id (default: from hook event)
+
+MCP flags:
+  --agent <name>       Agent name to annotate traces (default: agentctl-mcp)
+  --model <name>       Model name to annotate traces
+
+MCP environment:
+  AGENTCTL_SESSION     Override session id for MCP tool calls
+  See docs/mcp.md for Claude Code and Codex CLI setup.
+
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path
   AGENTCTL_APPROVAL_FILE Override the approvals file path
@@ -322,10 +336,6 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
-}
-
-func repeat(s string, n int) string {
-	return strings.Repeat(s, n)
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -360,11 +370,12 @@ func intFlagValue(name string, fallback int) int {
 	return fallback
 }
 
-func traceFilePath() string {
-	if path := os.Getenv("AGENTCTL_TRACE_FILE"); path != "" {
+// agentctlDataPath resolves a file path under the agentctl home directory.
+// envOverride, if set in the environment, bypasses home resolution entirely.
+func agentctlDataPath(envOverride, filename string) string {
+	if path := os.Getenv(envOverride); path != "" {
 		return path
 	}
-
 	home := os.Getenv("AGENTCTL_HOME")
 	if home == "" {
 		userHome, err := os.UserHomeDir()
@@ -374,6 +385,9 @@ func traceFilePath() string {
 		}
 		home = filepath.Join(userHome, ".agentctl")
 	}
+	return filepath.Join(home, filename)
+}
 
-	return filepath.Join(home, "traces.jsonl")
+func traceFilePath() string {
+	return agentctlDataPath("AGENTCTL_TRACE_FILE", "traces.jsonl")
 }

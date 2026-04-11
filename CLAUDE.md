@@ -19,6 +19,13 @@
 - Keep functions straightforward; avoid clever abstractions in v1.
 - Add tests for policy and trace edge cases when behavior changes.
 - Use `golangci-lint` defaults plus the repo config before merging.
+- Follow the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md). Key rules enforced here:
+  - **Use `path/filepath`** — never reimplement `filepath.Join` / `filepath.Dir` manually.
+  - **Wrap errors with `%w`** — `fmt.Errorf("context: %w", err)` so callers can use `errors.Is`.
+  - **Always use field names in struct literals** — positional init is fragile as fields grow.
+  - **Table-driven tests** — group related cases under a single `t.Run` loop; name each subcase.
+  - **No package-level mutable state** — prefer dependency injection; globals make tests order-dependent.
+  - **Verify interface compliance at compile time** — `var _ http.Handler = (*apiServer)(nil)` where it matters.
 
 ## Cross-Language Contract
 

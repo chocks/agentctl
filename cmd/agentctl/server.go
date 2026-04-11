@@ -74,7 +74,7 @@ func (s *apiServer) routes() http.Handler {
 	mux.HandleFunc("/v1/traces", s.handleTraces)
 	mux.HandleFunc("/v1/replay", s.handleReplay)
 	mux.HandleFunc("/v1/approvals", s.handleApprovals)
-	mux.HandleFunc("/v1/approvals/", s.handleApprovalResolution)
+	mux.HandleFunc("/v1/approvals/", s.handleApprovalByID)
 	return s.withAuth(mux)
 }
 
@@ -209,15 +209,86 @@ func (s *apiServer) handleApprovals(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, approvalListResponse{Approvals: records})
 }
 
-func (s *apiServer) handleApprovalResolution(w http.ResponseWriter, r *http.Request) {
+// handleApprovalByID handles:
+//
+//	GET  /v1/approvals/{id}         — fetch a single approval record
+//	POST /v1/approvals/{id}/approve — approve a pending escalation
+//	POST /v1/approvals/{id}/deny    — deny a pending escalation
+func (s *apiServer) handleApprovalByID(w http.ResponseWriter, r *http.Request) {
+	trimmed := strings.TrimPrefix(r.URL.Path, "/v1/approvals/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeJSONError(w, http.StatusNotFound, "approval not found")
+		return
+	}
+
+	approvalID := parts[0]
+
+	// GET /v1/approvals/{id} — return single record
+	if r.Method == http.MethodGet && len(parts) == 1 {
+		records, err := readApprovals(approvalFilePath(), "")
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("reading approvals: %v", err))
+			return
+		}
+		for _, rec := range records {
+			if rec.ApprovalID == approvalID {
+				writeJSON(w, http.StatusOK, rec)
+				return
+			}
+		}
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("approval %q not found", approvalID))
+		return
+	}
+
+	// GET /v1/approvals/{id}/wait — long-poll until resolved or timeout
+	if r.Method == http.MethodGet && len(parts) == 2 && parts[1] == "wait" {
+		timeoutStr := r.URL.Query().Get("timeout")
+		timeout := 30 * time.Second
+		if timeoutStr != "" {
+			if d, err := parseDuration(timeoutStr); err == nil && d > 0 {
+				if d > 120*time.Second {
+					d = 120 * time.Second
+				}
+				timeout = d
+			}
+		}
+		deadline := time.Now().Add(timeout)
+		for {
+			records, err := readApprovals(approvalFilePath(), "")
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("reading approvals: %v", err))
+				return
+			}
+			var found *approvalRecord
+			for i := range records {
+				if records[i].ApprovalID == approvalID {
+					found = &records[i]
+					break
+				}
+			}
+			if found == nil {
+				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("approval %q not found", approvalID))
+				return
+			}
+			if found.Status != approvalStatusPending {
+				writeJSON(w, http.StatusOK, *found)
+				return
+			}
+			if time.Now().After(deadline) {
+				writeJSON(w, http.StatusRequestTimeout, *found)
+				return
+			}
+			time.Sleep(time.Second)
+		}
+	}
+
+	// POST /v1/approvals/{id}/approve|deny
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w, http.MethodPost)
 		return
 	}
-
-	trimmed := strings.TrimPrefix(r.URL.Path, "/v1/approvals/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) != 2 || parts[0] == "" {
+	if len(parts) != 2 {
 		writeJSONError(w, http.StatusNotFound, "approval route not found")
 		return
 	}
@@ -238,7 +309,7 @@ func (s *apiServer) handleApprovalResolution(w http.ResponseWriter, r *http.Requ
 		resolvedBy = "api-operator"
 	}
 
-	record, err := resolveApproval(approvalFilePath(), parts[0], status, resolvedBy)
+	record, err := resolveApproval(approvalFilePath(), approvalID, status, resolvedBy)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

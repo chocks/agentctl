@@ -37,8 +37,3 @@ actions:
       - "*.litellm.cloud"     # known exfil domain from LiteLLM incident
       - "*.checkmarx.zone"    # known exfil domain from LiteLLM incident
 
-notifications:
-  escalation:
-    - slack: "#agent-approvals"
-  denial:
-    - slack: "#agent-security"

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -34,21 +35,7 @@ type approvalRecord struct {
 }
 
 func approvalFilePath() string {
-	if path := os.Getenv("AGENTCTL_APPROVAL_FILE"); path != "" {
-		return path
-	}
-
-	home := os.Getenv("AGENTCTL_HOME")
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error resolving user home directory: %v\n", err)
-			os.Exit(1)
-		}
-		home = filepathJoin(userHome, ".agentctl")
-	}
-
-	return filepathJoin(home, "approvals.jsonl")
+	return agentctlDataPath("AGENTCTL_APPROVAL_FILE", "approvals.jsonl")
 }
 
 func recordApprovalForDecision(path string, decision *schema.Decision) error {
@@ -68,7 +55,7 @@ func recordApprovalForDecision(path string, decision *schema.Decision) error {
 }
 
 func appendApproval(path string, record approvalRecord) error {
-	ensureDir(filepathDir(path))
+	ensureDir(filepath.Dir(path))
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -100,6 +87,7 @@ func readApprovals(path string, status approvalStatus) ([]approvalRecord, error)
 
 	latest := map[string]approvalRecord{}
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024) // allow lines up to 4 MB
 	for scanner.Scan() {
 		if len(scanner.Bytes()) == 0 {
 			continue
@@ -184,7 +172,7 @@ func cmdApprovalList() {
 	}
 
 	fmt.Printf("%-36s %-18s %-18s %-10s %s\n", "APPROVAL ID", "SESSION", "ACTION", "STATUS", "REASON")
-	fmt.Println(repeat("-", 100))
+	fmt.Println(strings.Repeat("-", 100))
 	for _, record := range records {
 		fmt.Printf("%-36s %-18s %-18s %-10s %s\n",
 			record.ApprovalID,
@@ -215,17 +203,4 @@ func cmdApprovalResolve(status approvalStatus) {
 		os.Exit(1)
 	}
 	fmt.Println(string(out))
-}
-
-func filepathJoin(base string, elems ...string) string {
-	parts := append([]string{base}, elems...)
-	return strings.Join(parts, string(os.PathSeparator))
-}
-
-func filepathDir(path string) string {
-	idx := strings.LastIndex(path, string(os.PathSeparator))
-	if idx <= 0 {
-		return "."
-	}
-	return path[:idx]
 }
