@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/schema"
 )
 
 // Store is the trace storage backend.

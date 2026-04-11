@@ -40,9 +40,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/gate"
-	"github.com/agentctl/agentctl/pkg/schema"
-	"github.com/agentctl/agentctl/pkg/trace"
+	"github.com/chocks/agentctl/pkg/gate"
+	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/trace"
 )
 
 const mcpProtocolVersion = "2024-11-05"
@@ -72,12 +72,6 @@ const (
 )
 
 // ── MCP protocol types ───────────────────────────────────────────────────────
-
-type mcpInitializeParams struct {
-	ProtocolVersion string            `json:"protocolVersion"`
-	Capabilities    map[string]any    `json:"capabilities"`
-	ClientInfo      mcpImplementation `json:"clientInfo"`
-}
 
 type mcpImplementation struct {
 	Name    string `json:"name"`
@@ -322,7 +316,7 @@ func (s *mcpServer) handleInitialize(id json.RawMessage) jsonRPCMessage {
 	result, _ := json.Marshal(mcpInitializeResult{
 		ProtocolVersion: mcpProtocolVersion,
 		Capabilities:    map[string]any{"tools": map[string]any{}},
-		ServerInfo:      mcpImplementation{Name: "agentctl", Version: agentctlVersion},
+		ServerInfo:      mcpImplementation{Name: "agentctl", Version: version},
 	})
 	return okResponse(id, result)
 }

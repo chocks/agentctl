@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/schema"
 )
 
 type approvalStatus string

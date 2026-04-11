@@ -19,7 +19,7 @@ Install and configure agentctl in this project. Follow these steps exactly:
    - Verify git is available.
 
 2. Install the agentctl binary:
-   - Run: go install github.com/agentctl/agentctl/cmd/agentctl@latest
+   - Run: go install github.com/chocks/agentctl/cmd/agentctl@latest
    - Verify it works: agentctl version
 
 3. Create a starter policy file `agentctl.policy.yaml` in the project root with these defaults:

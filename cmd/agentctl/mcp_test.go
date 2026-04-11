@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentctl/agentctl/pkg/gate"
-	"github.com/agentctl/agentctl/pkg/policy"
-	"github.com/agentctl/agentctl/pkg/schema"
-	"github.com/agentctl/agentctl/pkg/trace"
+	"github.com/chocks/agentctl/pkg/gate"
+	"github.com/chocks/agentctl/pkg/policy"
+	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/trace"
 )
 
 // newTestServer creates an mcpServer backed by a configurable policy and a

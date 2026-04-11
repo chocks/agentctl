@@ -31,9 +31,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/gate"
-	"github.com/agentctl/agentctl/pkg/schema"
-	"github.com/agentctl/agentctl/pkg/trace"
+	"github.com/chocks/agentctl/pkg/gate"
+	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/trace"
 )
 
 // claudeHookEvent is the JSON payload Claude Code sends to PreToolUse hooks on stdin.

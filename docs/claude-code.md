@@ -5,7 +5,7 @@ agentctl integrates with Claude Code via its **PreToolUse hook** to automaticall
 ## Installation
 
 ```bash
-go install github.com/agentctl/agentctl/cmd/agentctl@latest
+go install github.com/chocks/agentctl/cmd/agentctl@latest
 ```
 
 Or download a pre-built binary from the releases page and place it on your `$PATH`.

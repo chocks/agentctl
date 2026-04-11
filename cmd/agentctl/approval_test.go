@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/schema"
 )
 
 func TestRecordAndResolveApproval(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/agentctl/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 

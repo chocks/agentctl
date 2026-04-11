@@ -17,16 +17,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/gate"
-	"github.com/agentctl/agentctl/pkg/policy"
-	"github.com/agentctl/agentctl/pkg/schema"
-	"github.com/agentctl/agentctl/pkg/trace"
+	"github.com/chocks/agentctl/pkg/gate"
+	"github.com/chocks/agentctl/pkg/policy"
+	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/trace"
 )
 
-const (
-	defaultPolicyFile = "agentctl.policy.yaml"
-	agentctlVersion   = "0.1.0"
-)
+// Set via -ldflags at build time. Falls back to "(dev)" for local builds.
+var version = "(dev)"
+
+const defaultPolicyFile = "agentctl.policy.yaml"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -62,7 +62,7 @@ func main() {
 	case "serve":
 		cmdServe()
 	case "version":
-		fmt.Println("agentctl v" + agentctlVersion)
+		fmt.Printf("agentctl %s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
 	default:

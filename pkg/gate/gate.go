@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/policy"
-	"github.com/agentctl/agentctl/pkg/schema"
-	"github.com/agentctl/agentctl/pkg/trace"
+	"github.com/chocks/agentctl/pkg/policy"
+	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/trace"
 	"github.com/google/uuid"
 )
 

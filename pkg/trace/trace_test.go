@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentctl/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/schema"
 )
 
 // writeTraces writes a slice of decisions as JSON lines to path.
