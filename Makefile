@@ -5,7 +5,7 @@ OPENAPI_SPEC ?= api/openapi.yaml
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: fmt lint test build install ci codegen-js codegen-py
+.PHONY: fmt lint test build install install-tools ci codegen-js codegen-py
 
 fmt:
 	gofmt -w ./cmd ./pkg
@@ -20,6 +20,9 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o bin/agentctl ./cmd/agentctl
 
 ci: fmt lint test build
+
+install-tools:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 install:
 	go install -ldflags "$(LDFLAGS)" ./cmd/agentctl
