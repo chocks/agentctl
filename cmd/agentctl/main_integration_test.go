@@ -13,16 +13,20 @@ func TestCLIEndToEndGateTraceReplay(t *testing.T) {
 	repoRoot := repoRootFromTestDir(t)
 	workdir := t.TempDir()
 	binaryPath := filepath.Join(workdir, "agentctl")
-	agentctlHome := filepath.Join(workdir, ".agentctl-home")
+	fakeHome := filepath.Join(workdir, "fakehome")
+	agentctlDir := filepath.Join(fakeHome, ".agentctl")
+	if err := os.MkdirAll(agentctlDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	build := exec.Command("go", "build", "-o", binaryPath, "./cmd/agentctl")
 	build.Dir = repoRoot
-	build.Env = append(os.Environ(), inheritedGoEnv()...)
+	build.Env = append(inheritedGoEnv(), "HOME="+os.Getenv("HOME"))
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build error = %v\n%s", err, output)
 	}
 
-	writeFile(t, filepath.Join(workdir, "agentctl.policy.yaml"), `
+	writeFile(t, filepath.Join(agentctlDir, "policy.yaml"), `
 actions:
   access_secret:
     require_approval: always
@@ -32,13 +36,13 @@ actions:
 `)
 
 	allowInput := `{"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call provider"}`
-	_, stdout, stderr := runCLI(t, workdir, binaryPath, agentctlHome, allowInput, "gate", "--session", "demo-1")
+	_, stdout, stderr := runCLI(t, workdir, binaryPath, fakeHome, allowInput, "gate", "--session", "demo-1")
 	if !strings.Contains(stdout, `"verdict": "allow"`) {
 		t.Fatalf("expected allow output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 
 	escalateInput := `{"action":"access_secret","params":{"name":"OPENAI_API_KEY"},"reason":"need credentials"}`
-	exitCode, stdout, stderr := runCLI(t, workdir, binaryPath, agentctlHome, escalateInput, "gate", "--session", "demo-1")
+	exitCode, stdout, stderr := runCLI(t, workdir, binaryPath, fakeHome, escalateInput, "gate", "--session", "demo-1")
 	if exitCode != 2 {
 		t.Fatalf("expected exit code 2 for escalation, got %d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -52,7 +56,7 @@ actions:
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
-	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "approval", "list", "--status", "pending")
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, fakeHome, "", "approval", "list", "--status", "pending")
 	if exitCode != 0 {
 		t.Fatalf("approval list exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -60,7 +64,7 @@ actions:
 		t.Fatalf("expected approval list to include %q, got stdout=%q stderr=%q", escalated.TraceID, stdout, stderr)
 	}
 
-	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "approval", "approve", escalated.TraceID, "--by", "tester")
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, fakeHome, "", "approval", "approve", escalated.TraceID, "--by", "tester")
 	if exitCode != 0 {
 		t.Fatalf("approval approve exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -68,7 +72,7 @@ actions:
 		t.Fatalf("expected approved output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 
-	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "trace", "search", "--session", "demo-1")
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, fakeHome, "", "trace", "search", "--session", "demo-1")
 	if exitCode != 0 {
 		t.Fatalf("trace search exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -76,7 +80,8 @@ actions:
 		t.Fatalf("expected both actions in trace search output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 
-	writeFile(t, filepath.Join(workdir, "replay.policy.yaml"), `
+	replayPolicyPath := filepath.Join(workdir, "replay.policy.yaml")
+	writeFile(t, replayPolicyPath, `
 actions:
   access_secret:
     require_approval: always
@@ -85,7 +90,7 @@ actions:
       - "api.openai.com"
 `)
 
-	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, agentctlHome, "", "replay", "demo-1", "--policy", "replay.policy.yaml")
+	exitCode, stdout, stderr = runCLI(t, workdir, binaryPath, fakeHome, "", "replay", "demo-1", "--policy", replayPolicyPath)
 	if exitCode != 0 {
 		t.Fatalf("replay exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
 	}
@@ -129,7 +134,7 @@ func repoRootFromTestDir(t *testing.T) string {
 }
 
 func inheritedGoEnv() []string {
-	keys := []string{"GOCACHE", "GOMODCACHE", "GOPATH", "PATH", "HOME"}
+	keys := []string{"GOCACHE", "GOMODCACHE", "GOPATH", "PATH"}
 	values := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if value, ok := os.LookupEnv(key); ok {
@@ -139,14 +144,13 @@ func inheritedGoEnv() []string {
 	return values
 }
 
-func runCLI(t *testing.T, dir, binaryPath, agentctlHome, stdin string, args ...string) (int, string, string) {
+func runCLI(t *testing.T, dir, binaryPath, fakeHome, stdin string, args ...string) (int, string, string) {
 	t.Helper()
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
-	cmd.Env = append(os.Environ(), inheritedGoEnv()...)
-	cmd.Env = append(cmd.Env, "AGENTCTL_HOME="+agentctlHome)
+	cmd.Env = append(inheritedGoEnv(), "HOME="+fakeHome)
 
 	stdout, err := cmd.Output()
 	if err == nil {

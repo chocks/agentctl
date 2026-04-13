@@ -14,18 +14,18 @@ import (
 
 // newTestServer creates an mcpServer backed by a configurable policy and a
 // no-op trace writer. sessionID is fixed so test output is deterministic.
-// It also isolates approval file writes to a temp dir via env var.
+// Approval file writes are isolated to a temp dir via the approvalPath field.
 func newTestServer(t *testing.T, policyYAML string) *mcpServer {
 	t.Helper()
-	t.Setenv("AGENTCTL_APPROVAL_FILE", t.TempDir()+"/approvals.jsonl")
 	pol, err := policy.LoadFromBytes([]byte(policyYAML))
 	if err != nil {
 		t.Fatalf("LoadFromBytes: %v", err)
 	}
 	return &mcpServer{
-		sessionID: "test-session",
-		agent:     "test-agent",
-		g:         gate.New(pol, trace.NewWriterStore(&bytes.Buffer{})),
+		sessionID:    "test-session",
+		agent:        "test-agent",
+		approvalPath: t.TempDir() + "/approvals.jsonl",
+		g:            gate.New(pol, trace.NewWriterStore(&bytes.Buffer{})),
 	}
 }
 
