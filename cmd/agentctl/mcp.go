@@ -12,8 +12,7 @@ package main
 //	  "mcpServers": {
 //	    "agentctl": {
 //	      "command": "agentctl",
-//	      "args": ["mcp"],
-//	      "env": { "AGENTCTL_POLICY": "./agentctl.policy.yaml" }
+//	      "args": ["mcp"]
 //	    }
 //	  }
 //	}
@@ -37,9 +36,9 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path/filepath"
 	"time"
 
+	"github.com/chocks/agentctl/pkg/config"
 	"github.com/chocks/agentctl/pkg/gate"
 	"github.com/chocks/agentctl/pkg/schema"
 	"github.com/chocks/agentctl/pkg/trace"
@@ -235,34 +234,46 @@ func mcpTools() []mcpTool {
 // ── Server ───────────────────────────────────────────────────────────────────
 
 type mcpServer struct {
-	sessionID string
-	agent     string
-	model     string
-	g         *gate.Gate
+	sessionID    string
+	agent        string
+	model        string
+	workspace    string
+	approvalPath string
+	g            *gate.Gate
 }
 
-func cmdMCP() {
+func cmdMCP(paths config.Paths) {
 	agent := stringFlagValue("--agent", "agentctl-mcp")
 	model := stringFlagValue("--model", "")
 
-	sessionID := os.Getenv("AGENTCTL_SESSION")
-	if sessionID == "" {
-		sessionID = fmt.Sprintf("mcp-%d", time.Now().UnixMilli())
+	sessionID := fmt.Sprintf("mcp-%d", time.Now().UnixMilli())
+
+	pol, err := paths.LoadPolicy()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "agentctl mcp: error loading policy: %v\n", err)
+		os.Exit(1)
 	}
 
-	traceFile := traceFilePath()
-	ensureDir(filepath.Dir(traceFile))
-	tracer, err := trace.NewFileStore(traceFile)
+	if err := paths.EnsureHome(); err != nil {
+		fmt.Fprintf(os.Stderr, "agentctl mcp: error ensuring home: %v\n", err)
+		os.Exit(1)
+	}
+
+	tracer, err := trace.NewFileStore(paths.Traces)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl mcp: error opening trace store: %v\n", err)
 		os.Exit(1)
 	}
 
+	workspace, _ := os.Getwd()
+
 	srv := &mcpServer{
-		sessionID: sessionID,
-		agent:     agent,
-		model:     model,
-		g:         gate.New(loadPolicy(), tracer),
+		sessionID:    sessionID,
+		agent:        agent,
+		model:        model,
+		workspace:    workspace,
+		approvalPath: paths.Approvals,
+		g:            gate.New(pol, tracer),
 	}
 	srv.serve(os.Stdin, os.Stdout)
 }
@@ -341,6 +352,7 @@ func (s *mcpServer) handleToolsCall(id json.RawMessage, rawParams json.RawMessag
 		SessionID: s.sessionID,
 		Agent:     s.agent,
 		Model:     s.model,
+		Workspace: s.workspace,
 		Timestamp: time.Now(),
 	}
 
@@ -349,7 +361,7 @@ func (s *mcpServer) handleToolsCall(id json.RawMessage, rawParams json.RawMessag
 		return errorResponse(id, codeInternalError, "gate evaluation failed: "+err.Error())
 	}
 
-	if err := recordApprovalForDecision(approvalFilePath(), decision); err != nil {
+	if err := recordApprovalForDecision(s.approvalPath, decision); err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl mcp: error recording approval: %v\n", err)
 	}
 

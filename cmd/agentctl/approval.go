@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chocks/agentctl/pkg/config"
 	"github.com/chocks/agentctl/pkg/schema"
 )
 
@@ -34,10 +35,6 @@ type approvalRecord struct {
 	ResolvedBy  string         `json:"resolved_by,omitempty"`
 }
 
-func approvalFilePath() string {
-	return agentctlDataPath("AGENTCTL_APPROVAL_FILE", "approvals.jsonl")
-}
-
 func recordApprovalForDecision(path string, decision *schema.Decision) error {
 	if decision == nil || !decision.ApprovalRequired {
 		return nil
@@ -55,7 +52,9 @@ func recordApprovalForDecision(path string, decision *schema.Decision) error {
 }
 
 func appendApproval(path string, record approvalRecord) error {
-	ensureDir(filepath.Dir(path))
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating approval directory: %w", err)
+	}
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -144,7 +143,7 @@ func resolveApproval(path, approvalID string, status approvalStatus, resolvedBy 
 	return approvalRecord{}, fmt.Errorf("approval %q not found", approvalID)
 }
 
-func cmdApproval() {
+func cmdApproval(paths config.Paths) {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "usage: agentctl approval [list|approve|deny]")
 		os.Exit(1)
@@ -152,20 +151,20 @@ func cmdApproval() {
 
 	switch os.Args[2] {
 	case "list":
-		cmdApprovalList()
+		cmdApprovalList(paths.Approvals)
 	case "approve":
-		cmdApprovalResolve(approvalStatusApproved)
+		cmdApprovalResolve(paths.Approvals, approvalStatusApproved)
 	case "deny":
-		cmdApprovalResolve(approvalStatusDenied)
+		cmdApprovalResolve(paths.Approvals, approvalStatusDenied)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown approval command: %s\n", os.Args[2])
 		os.Exit(1)
 	}
 }
 
-func cmdApprovalList() {
+func cmdApprovalList(approvalPath string) {
 	status := approvalStatus(stringFlagValue("--status", ""))
-	records, err := readApprovals(approvalFilePath(), status)
+	records, err := readApprovals(approvalPath, status)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -185,13 +184,13 @@ func cmdApprovalList() {
 	fmt.Printf("\n%d approvals shown\n", len(records))
 }
 
-func cmdApprovalResolve(status approvalStatus) {
+func cmdApprovalResolve(approvalPath string, status approvalStatus) {
 	if len(os.Args) < 4 {
 		fmt.Fprintf(os.Stderr, "usage: agentctl approval %s <approval_id> [--by name]\n", status)
 		os.Exit(1)
 	}
 
-	record, err := resolveApproval(approvalFilePath(), os.Args[3], status, stringFlagValue("--by", "local-operator"))
+	record, err := resolveApproval(approvalPath, os.Args[3], status, stringFlagValue("--by", "local-operator"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
