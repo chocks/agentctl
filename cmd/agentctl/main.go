@@ -59,8 +59,6 @@ func main() {
 		cmdReplay()
 	case "approval":
 		cmdApproval()
-	case "serve":
-		cmdServe()
 	case "version":
 		fmt.Printf("agentctl %s\n", version)
 	case "help", "--help", "-h":
@@ -266,7 +264,6 @@ Usage:
   agentctl trace search [filters]  Search traces
   agentctl replay <session_id>     Re-evaluate a session with a policy file
   agentctl approval [subcommand]   List or resolve escalations
-  agentctl serve [--addr host:port] Run local HTTP API
   agentctl hook <type>             Tool hook adapter (e.g. claude-code)
   agentctl mcp                     Run as an MCP server (stdio, JSON-RPC 2.0)
   agentctl version                 Print version
@@ -296,10 +293,6 @@ Approval commands:
   approval approve <id> [--by name]
   approval deny <id> [--by name]
 
-Serve flags:
-  --addr <host:port>   Listen address (default 127.0.0.1:8080)
-  --auth-token <token> Require bearer auth for the HTTP API
-
 Hook types:
   claude-code          PreToolUse adapter for Claude Code
                        See docs/claude-code.md for setup instructions
@@ -320,7 +313,6 @@ MCP environment:
 Environment:
   AGENTCTL_TRACE_FILE  Override the trace file path
   AGENTCTL_APPROVAL_FILE Override the approvals file path
-  AGENTCTL_AUTH_TOKEN  Bearer token for the HTTP API
   AGENTCTL_HOME        Override the trace home directory`)
 }
 
@@ -390,4 +382,32 @@ func agentctlDataPath(envOverride, filename string) string {
 
 func traceFilePath() string {
 	return agentctlDataPath("AGENTCTL_TRACE_FILE", "traces.jsonl")
+}
+
+func replaySession(policyFile, traceFile, sessionID string, limit int) ([]schema.Decision, error) {
+	// Load the new policy for replay
+	pol := loadPolicyFromPath(policyFile)
+
+	// Read all traces for this session
+	traces, err := trace.ReadTraces(traceFile, trace.TraceFilter{
+		SessionID: sessionID,
+		Limit:     limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading traces: %w", err)
+	}
+
+	// Re-evaluate each trace with the new policy
+	results := make([]schema.Decision, 0, len(traces))
+	evaluator := gate.New(pol, trace.NewWriterStore(io.Discard))
+
+	for _, tr := range traces {
+		decision, err := evaluator.Evaluate(tr.Request)
+		if err != nil {
+			return nil, fmt.Errorf("re-evaluating trace: %w", err)
+		}
+		results = append(results, *decision)
+	}
+
+	return results, nil
 }
