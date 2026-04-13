@@ -191,7 +191,7 @@ func (e *Engine) Evaluate(req schema.ActionRequest) EvalResult {
 			if params.Domain == "" {
 				params.Domain = deriveDomain(params.URL)
 			}
-			if len(actionPolicy.AllowedDomains) > 0 {
+			if actionPolicy.AllowedDomains != nil {
 				allowed := false
 				for _, d := range actionPolicy.AllowedDomains {
 					if matchDomain(params.Domain, d) {
@@ -216,6 +216,38 @@ func (e *Engine) Evaluate(req schema.ActionRequest) EvalResult {
 						Reason:       fmt.Sprintf("domain %q is blocked", params.Domain),
 						MatchedRules: []string{"domain_blocklist"},
 					}
+				}
+			}
+		}
+	}
+
+	// ── Write file rules ──
+	if req.Action == schema.ActionWriteFile {
+		var params schema.WriteFileParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			for _, pattern := range actionPolicy.BlockPatterns {
+				if matchPath(params.Path, pattern) {
+					return EvalResult{
+						Verdict:      schema.VerdictDeny,
+						RiskScore:    100,
+						Reason:       fmt.Sprintf("file path matches blocked pattern: %q", pattern),
+						MatchedRules: []string{"block_pattern:" + pattern},
+					}
+				}
+			}
+		}
+	}
+
+	// ── Access secret rules ──
+	if req.Action == schema.ActionAccessSecret {
+		var params schema.AccessSecretParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			if actionPolicy.MaxTTL > 0 && params.TTL > 0 && params.TTL > actionPolicy.MaxTTL {
+				return EvalResult{
+					Verdict:      schema.VerdictDeny,
+					RiskScore:    100,
+					Reason:       fmt.Sprintf("requested TTL %d exceeds max_ttl %d", params.TTL, actionPolicy.MaxTTL),
+					MatchedRules: []string{"max_ttl"},
 				}
 			}
 		}
@@ -257,6 +289,17 @@ func matchDomain(domain, pattern string) bool {
 		return strings.HasSuffix(domain, suffix) || domain == pattern[2:]
 	}
 	return domain == pattern
+}
+
+// matchPath checks if a file path matches a block pattern.
+// Patterns starting with "*." match by file extension (e.g., "*.pem" matches "server.pem").
+// Other patterns match if the path ends with the pattern (e.g., ".env" matches "/app/.env").
+func matchPath(path, pattern string) bool {
+	if strings.HasPrefix(pattern, "*.") {
+		ext := pattern[1:] // ".pem"
+		return strings.HasSuffix(path, ext)
+	}
+	return strings.HasSuffix(path, pattern)
 }
 
 func deriveDomain(rawURL string) string {
