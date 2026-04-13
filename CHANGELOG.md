@@ -11,6 +11,33 @@ notes automatically.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-12
+
+### Added
+
+- **`agentctl attach` / `agentctl detach`** — configure Claude Code and Codex
+  integrations and lazily bootstrap `~/.agentctl/`.
+- **`agentctl doctor`** — verify policy loading, trace and approval stores, and
+  per-agent integration status.
+- **`agentctl ui`** — a terminal UI for recent traces and pending approvals.
+- **Policy hardening** — request workspace context, `write_file`
+  `block_patterns`, `access_secret.max_ttl`, and explicit deny-all semantics
+  for `call_external_api.allowed_domains: []`.
+
+### Changed
+
+- `agentctl` now uses a single global policy file at
+  `~/.agentctl/policy.yaml`, with traces and approvals stored alongside it.
+- Claude Code and Codex setup now lead with the `attach` workflow instead of
+  manual config editing.
+- The module and contributor baseline are now Go 1.26.2.
+
+### Removed
+
+- Repo-local `agentctl.policy.yaml` configuration.
+- The HTTP server, embedded web UI, generated SDK clients, and VS Code
+  extension.
+
 ## [0.0.2] - 2026-04-11
 
 ### Changed
@@ -45,6 +72,7 @@ replaying high-risk agent actions.
 - **Release pipeline** — cross-platform binaries for linux, darwin, windows
   across amd64 and arm64, built and published via goreleaser.
 
-[Unreleased]: https://github.com/chocks/agentctl/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/chocks/agentctl/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/chocks/agentctl/releases/tag/v0.1.0
 [0.0.2]: https://github.com/chocks/agentctl/releases/tag/v0.0.2
 [0.0.1]: https://github.com/chocks/agentctl/releases/tag/v0.0.1
