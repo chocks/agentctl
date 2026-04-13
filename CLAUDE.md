@@ -2,16 +2,17 @@
 
 ## Project
 
-`agentctl` is a small Go codebase for gating and tracing high-risk agent actions. Keep the product focused on the three v1 primitives: `gate`, `trace`, and `replay`.
+`agentctl` is a small Go codebase for gating and tracing high-risk agent actions. Keep the product focused on the v1 control plane: attach/detach, gate, trace, replay, approvals, and the terminal UI.
 
 ## Engineering Rules
 
 - Prefer small, composable packages under `pkg/`.
 - Keep CLI behavior in `cmd/agentctl`; avoid leaking flag parsing into lower layers.
-- Preserve the action schema in `pkg/schema` carefully. Changes there affect policy, tracing, replay, and future SDKs.
+- Preserve the action schema in `pkg/schema` carefully. Changes there affect policy, tracing, replay, and the hook/MCP adapters.
 - Favor standard library implementations unless a dependency clearly pays for itself.
 - Record traces reliably. Do not optimize trace writes in a way that risks dropping decisions.
 - Keep policy evaluation deterministic and side-effect free.
+- Keep the user-facing configuration model simple: one global policy at `~/.agentctl/policy.yaml`.
 
 ## Go Practices
 
@@ -25,20 +26,13 @@
   - **Always use field names in struct literals** — positional init is fragile as fields grow.
   - **Table-driven tests** — group related cases under a single `t.Run` loop; name each subcase.
   - **No package-level mutable state** — prefer dependency injection; globals make tests order-dependent.
-  - **Verify interface compliance at compile time** — `var _ http.Handler = (*apiServer)(nil)` where it matters.
-
-## Cross-Language Contract
-
-- Treat `api/openapi.yaml` as the source of truth for generated JS and Python clients.
-- Keep OpenAPI and `pkg/schema` synchronized.
-- Prefer contract-first additions over language-specific SDK drift.
-- If you add or rename request fields, update the OpenAPI spec in the same change.
+  - **Verify interface compliance at compile time** where it materially protects a boundary.
 
 ## Product Guardrails
 
 - Do not expand scope into a full compliance platform in this repo without clear product pull.
 - Govern only high-risk actions.
-- Minimize runtime assumptions so future SDK wrappers stay low-friction.
+- Prefer local-first workflows over background daemons or extra infrastructure.
 
 ## License
 

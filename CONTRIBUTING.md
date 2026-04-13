@@ -2,9 +2,8 @@
 
 ## Prerequisites
 
-- Go 1.23+
+- Go 1.26.2+
 - `golangci-lint` ([install](https://golangci-lint.run/welcome/install/))
-- Node.js 18+ (only for SDK codegen)
 
 ## Setup
 
@@ -44,8 +43,7 @@ agentctl governs five high-risk actions: `install_package`, `run_code`, `access_
 Good contributions:
 - Bug fixes in policy evaluation or trace recording
 - New policy rules for the existing five actions
-- Improvements to the CLI, local API, or replay workflow
-- SDK client fixes or codegen improvements
+- Improvements to the CLI, TUI, hook/MCP adapters, or replay workflow
 - Test coverage for edge cases in `pkg/policy` and `pkg/trace`
 
 Probably out of scope:
@@ -65,15 +63,13 @@ When in doubt, open an issue before writing code.
 - **Paths**: use `path/filepath`, never manual string concatenation.
 - **Dependencies**: prefer the standard library. A new dependency needs to clearly pay for itself.
 
-## Schema and Contract Changes
+## Schema Changes
 
-`pkg/schema` and `api/openapi.yaml` are the most sensitive files. If you change them:
+`pkg/schema` is a sensitive file. If you change it:
 
-1. Update both Go types and OpenAPI spec in the same PR.
-2. Regenerate SDK clients (`make codegen-js`, `make codegen-py`).
-3. Update policy evaluation, trace queries, and tests to match.
-
-Do not let the Go types and OpenAPI spec drift apart.
+1. Update policy evaluation, trace queries, and tests in the same PR.
+2. Update hook and MCP request mapping if the request shape changed.
+3. Update docs if the user-facing contract changed.
 
 ## Traces Are Sacred
 
@@ -84,7 +80,8 @@ Trace recording must be reliable. Do not optimize trace writes in a way that ris
 - [ ] `make fmt` produces no diff
 - [ ] `make lint` passes
 - [ ] `make test` passes
-- [ ] Schema changes are reflected in both `pkg/schema` and `api/openapi.yaml`
+- [ ] Schema changes are reflected in policy evaluation, trace queries, and tests
+- [ ] Docs are updated when user-facing behavior changes
 - [ ] CLI output changes remain script-friendly (parseable, no gratuitous formatting)
 
 ## License

@@ -1,11 +1,9 @@
 GOLANGCI_LINT ?= golangci-lint
-OPENAPI_GENERATOR ?= npx openapi-generator-cli
-OPENAPI_SPEC ?= api/openapi.yaml
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: fmt lint test build install install-tools ci codegen-js codegen-py
+.PHONY: fmt lint test build install install-tools ci
 
 fmt:
 	gofmt -w ./cmd ./pkg
@@ -26,9 +24,3 @@ install-tools:
 
 install:
 	go install -ldflags "$(LDFLAGS)" ./cmd/agentctl
-
-codegen-js:
-	$(OPENAPI_GENERATOR) generate -i $(OPENAPI_SPEC) -g typescript-fetch -o sdk/js
-
-codegen-py:
-	$(OPENAPI_GENERATOR) generate -i $(OPENAPI_SPEC) -g python -o sdk/python

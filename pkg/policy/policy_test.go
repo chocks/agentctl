@@ -389,6 +389,172 @@ func TestDefaultEngineEnforcesCriticalDefaults(t *testing.T) {
 	})
 }
 
+// ── write_file ───────────────────────────────────────────────────────────────
+
+func TestEvaluateWriteFile(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      string
+		params      schema.WriteFileParams
+		wantVerdict schema.Verdict
+		wantRuleAny string
+	}{
+		{
+			name: ".env pattern blocks /home/user/project/.env",
+			policy: `
+actions:
+  write_file:
+    block_patterns: [".env"]`,
+			params:      schema.WriteFileParams{Path: "/home/user/project/.env", Operation: "overwrite"},
+			wantVerdict: schema.VerdictDeny,
+			wantRuleAny: "block_pattern",
+		},
+		{
+			name: ".env pattern allows /app/.env.local (does not end with .env)",
+			policy: `
+actions:
+  write_file:
+    block_patterns: [".env"]`,
+			params:      schema.WriteFileParams{Path: "/app/.env.local", Operation: "create"},
+			wantVerdict: schema.VerdictAllow,
+		},
+		{
+			name: "*.pem pattern blocks /etc/ssl/server.pem",
+			policy: `
+actions:
+  write_file:
+    block_patterns: ["*.pem"]`,
+			params:      schema.WriteFileParams{Path: "/etc/ssl/server.pem", Operation: "overwrite"},
+			wantVerdict: schema.VerdictDeny,
+			wantRuleAny: "block_pattern",
+		},
+		{
+			name: "*.key pattern blocks /home/user/.ssh/id_rsa.key",
+			policy: `
+actions:
+  write_file:
+    block_patterns: ["*.key"]`,
+			params:      schema.WriteFileParams{Path: "/home/user/.ssh/id_rsa.key", Operation: "create"},
+			wantVerdict: schema.VerdictDeny,
+			wantRuleAny: "block_pattern",
+		},
+		{
+			name: "safe path /tmp/output.txt with block_patterns set is allowed",
+			policy: `
+actions:
+  write_file:
+    block_patterns: [".env", "*.pem", "*.key"]`,
+			params:      schema.WriteFileParams{Path: "/tmp/output.txt", Operation: "create"},
+			wantVerdict: schema.VerdictAllow,
+		},
+		{
+			name:        "no policy (empty actions) = default allow",
+			policy:      `actions: {}`,
+			params:      schema.WriteFileParams{Path: "/home/user/project/.env", Operation: "create"},
+			wantVerdict: schema.VerdictAllow,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := makeEngine(t, tt.policy)
+			result := e.Evaluate(schema.ActionRequest{
+				Action: schema.ActionWriteFile,
+				Params: mustMarshal(t, tt.params),
+				Reason: "test",
+			})
+			if result.Verdict != tt.wantVerdict {
+				t.Errorf("verdict = %q, want %q (reason: %s)", result.Verdict, tt.wantVerdict, result.Reason)
+			}
+			if tt.wantRuleAny != "" && !containsRule(result.MatchedRules, tt.wantRuleAny) {
+				t.Errorf("matched_rules = %v, want entry containing %q", result.MatchedRules, tt.wantRuleAny)
+			}
+		})
+	}
+}
+
+// ── access_secret max_ttl ────────────────────────────────────────────────────
+
+func TestEvaluateAccessSecretMaxTTL(t *testing.T) {
+	tests := []struct {
+		name        string
+		params      schema.AccessSecretParams
+		wantVerdict schema.Verdict
+		wantRuleAny string
+	}{
+		{
+			name:        "TTL 200 within max_ttl 300 is allowed",
+			params:      schema.AccessSecretParams{Name: "DB_PASSWORD", TTL: 200},
+			wantVerdict: schema.VerdictAllow,
+		},
+		{
+			name:        "TTL 600 exceeds max_ttl 300 is denied",
+			params:      schema.AccessSecretParams{Name: "DB_PASSWORD", TTL: 600},
+			wantVerdict: schema.VerdictDeny,
+			wantRuleAny: "max_ttl",
+		},
+		{
+			name:        "TTL exactly at max_ttl 300 is allowed",
+			params:      schema.AccessSecretParams{Name: "DB_PASSWORD", TTL: 300},
+			wantVerdict: schema.VerdictAllow,
+		},
+		{
+			name:        "TTL 0 (unset) is allowed",
+			params:      schema.AccessSecretParams{Name: "DB_PASSWORD", TTL: 0},
+			wantVerdict: schema.VerdictAllow,
+		},
+	}
+
+	policy := `
+actions:
+  access_secret:
+    require_approval: never
+    max_ttl: 300`
+
+	e := makeEngine(t, policy)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := e.Evaluate(schema.ActionRequest{
+				Action: schema.ActionAccessSecret,
+				Params: mustMarshal(t, tt.params),
+				Reason: "test",
+			})
+			if result.Verdict != tt.wantVerdict {
+				t.Errorf("verdict = %q, want %q (reason: %s)", result.Verdict, tt.wantVerdict, result.Reason)
+			}
+			if tt.wantRuleAny != "" && !containsRule(result.MatchedRules, tt.wantRuleAny) {
+				t.Errorf("matched_rules = %v, want entry containing %q", result.MatchedRules, tt.wantRuleAny)
+			}
+		})
+	}
+}
+
+// ── call_external_api empty allowed_domains ──────────────────────────────────
+
+func TestEvaluateCallExternalAPIEmptyAllowedDomains(t *testing.T) {
+	policy := `
+actions:
+  call_external_api:
+    allowed_domains: []`
+
+	e := makeEngine(t, policy)
+	result := e.Evaluate(schema.ActionRequest{
+		Action: schema.ActionCallExternalAPI,
+		Params: mustMarshal(t, schema.CallExternalAPIParams{
+			URL:    "https://anything.com/api",
+			Method: "GET",
+			Domain: "anything.com",
+		}),
+		Reason: "test",
+	})
+	if result.Verdict != schema.VerdictDeny {
+		t.Errorf("verdict = %q, want deny — empty allowed_domains should deny all (reason: %s)", result.Verdict, result.Reason)
+	}
+	if !containsRule(result.MatchedRules, "domain_allowlist") {
+		t.Errorf("matched_rules = %v, want entry containing %q", result.MatchedRules, "domain_allowlist")
+	}
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func containsRule(rules []string, substr string) bool {

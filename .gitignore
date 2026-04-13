@@ -10,6 +10,9 @@ dist/
 *.out
 coverage.out
 
+# Planning docs
+docs/superpowers/
+
 # IDE / OS noise
 .DS_Store
 

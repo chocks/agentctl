@@ -1,92 +1,92 @@
 # agentctl MCP Server
 
-agentctl can run as an [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server. This lets any MCP-compatible client — Claude Code, Codex CLI, or your own tooling — call agentctl gate tools directly, with full policy evaluation and tracing, without needing a separate HTTP server.
+`agentctl mcp` exposes the five gate actions as MCP tools over stdio. This is the integration path for Codex and any other MCP client that can start a local subprocess.
 
-## How it works
+There is no HTTP server. The MCP process talks over stdin/stdout only.
 
-`agentctl mcp` speaks JSON-RPC 2.0 over stdio. The MCP client starts it as a subprocess and calls tools over stdin/stdout. Each tool call is evaluated against your local `agentctl.policy.yaml`, a trace is appended to `~/.agentctl/traces.jsonl`, and the verdict is returned as the tool result.
+## Recommended Codex Setup
 
-- **Allow** → `isError: false`, JSON summary with `verdict`, `trace_id`, `risk_score`
-- **Deny** → `isError: true`, human-readable reason and trace ID
-- **Escalate** → `isError: true`, reason plus `agentctl approval approve <id>` hint
+```bash
+go install github.com/chocks/agentctl/cmd/agentctl@latest
+agentctl attach codex
+agentctl doctor
+```
 
-## Available tools
+`attach codex` bootstraps `~/.agentctl/` and adds this entry to `~/.codex/config.toml`:
 
-| Tool | Gates |
-|------|-------|
-| `agentctl_install_package` | pip, npm, yarn, cargo, go get |
-| `agentctl_run_code` | shell and code execution |
-| `agentctl_write_file` | file create / overwrite / append |
-| `agentctl_access_secret` | credential and secret reads |
-| `agentctl_call_external_api` | outbound HTTP requests |
+```toml
+[mcp_servers.agentctl]
+command = "agentctl"
+args = ["mcp"]
+```
 
-Each tool accepts a `reason` argument (required) so the purpose of every action is captured in the trace.
+Codex will then see these tools:
 
-## Claude Code setup
+- `agentctl_install_package`
+- `agentctl_run_code`
+- `agentctl_write_file`
+- `agentctl_access_secret`
+- `agentctl_call_external_api`
 
-Add to `.claude/settings.json` in your repo (or `~/.claude/settings.json` for global):
+Each tool requires a `reason` field so the trace records why the action was requested.
+
+## How MCP Gating Works
+
+For each MCP tool call:
+
+1. `agentctl` evaluates the action against `~/.agentctl/policy.yaml`
+2. Appends a decision to `~/.agentctl/traces.jsonl`
+3. Returns a result to the client
+
+Result shape:
+
+- Allow: `isError: false`
+- Deny: `isError: true` with human-readable reason
+- Escalate: `isError: true` with reason and approval hint
+
+## Manual Codex Config
+
+If you do not want to use `attach`, add this to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.agentctl]
+command = "agentctl"
+args = ["mcp"]
+```
+
+## Claude Code MCP Usage
+
+Claude Code can also use `agentctl mcp`, but the recommended Claude integration is the hook adapter because it intercepts native tool calls automatically.
+
+Manual Claude MCP config:
 
 ```json
 {
   "mcpServers": {
     "agentctl": {
       "command": "agentctl",
-      "args": ["mcp"],
-      "env": {
-        "AGENTCTL_SESSION": "claude-code"
-      }
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-Drop an `agentctl.policy.yaml` in your repo root (see the example at the root of this repo). agentctl loads it automatically.
+## Replay and Approvals
 
-To verify the server is visible to Claude Code, ask it to list its MCP tools — `agentctl_install_package` and friends should appear.
-
-### Difference from the hook adapter
-
-| | Hook (`agentctl hook claude-code`) | MCP (`agentctl mcp`) |
-|---|---|---|
-| Intercepts | All native tool calls automatically | Only explicit `agentctl_*` tool calls |
-| Setup | `PreToolUse` in settings.json | `mcpServers` in settings.json |
-| Best for | Transparent policy enforcement | Opt-in gating from within agent code |
-
-Use the hook for automatic interception of Bash/Write/WebFetch. Use MCP when you want an agent to explicitly call `agentctl_run_code` before executing a command (useful when you control the agent's system prompt).
-
-## Codex CLI setup
-
-Add to `~/.codex/config.yaml`:
-
-```yaml
-mcp_servers:
-  agentctl:
-    command: agentctl
-    args: [mcp]
-    env:
-      AGENTCTL_SESSION: codex
-```
-
-Codex will see the five `agentctl_*` tools and can call them when the system prompt instructs it to gate risky actions.
-
-## Session and trace correlation
-
-All tool calls within one `agentctl mcp` process share a session ID, so you can query them together:
+All tool calls handled by one MCP process share a generated session ID, so they can be queried and replayed together:
 
 ```bash
-agentctl trace search --session mcp-1234567890
-agentctl replay mcp-1234567890 --policy stricter.policy.yaml
+agentctl trace search --session <session_id>
+agentctl replay <session_id>
 ```
 
-Set `AGENTCTL_SESSION` to a stable value (e.g. a git commit SHA or PR number) to make traces queryable across runs.
-
-## Approvals
-
-When a tool call returns escalate, the trace is held as a pending approval:
+Escalated actions are recorded in `~/.agentctl/approvals.jsonl`:
 
 ```bash
 agentctl approval list --status pending
 agentctl approval approve <approval_id> --by alice
+agentctl approval deny <approval_id> --by alice
+agentctl ui
 ```
 
-The MCP client will see `isError: true` with the approval ID and a hint to run the approve command. Once approved (or denied), the caller can retry.
+The MCP caller can retry after the operator resolves the approval.

@@ -53,6 +53,7 @@ type RequestContext struct {
 	Agent     string    `json:"agent,omitempty"`
 	Actor     string    `json:"actor,omitempty"`
 	Team      string    `json:"team,omitempty"`
+	Workspace string    `json:"workspace,omitempty"` // NEW — cwd at hook/MCP time
 	Turn      int       `json:"turn"`
 	Timestamp time.Time `json:"timestamp"`
 }

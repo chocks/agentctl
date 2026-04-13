@@ -1,31 +1,66 @@
 # agentctl + Claude Code
 
-agentctl integrates with Claude Code via its **PreToolUse hook** to automatically gate every Bash, Write, and WebFetch call against your local policy — no changes to prompts or agent code required.
+`agentctl` integrates with Claude Code through a `PreToolUse` hook. The recommended setup is `agentctl attach claude-code`, which bootstraps `~/.agentctl/` and updates `~/.claude/settings.json` for you.
 
-## Installation
+## Install and Attach
 
 ```bash
 go install github.com/chocks/agentctl/cmd/agentctl@latest
+agentctl attach claude-code
+agentctl doctor
 ```
 
-Or download a pre-built binary from the releases page and place it on your `$PATH`.
+`attach` does two things:
 
-Verify:
+1. Creates `~/.agentctl/` and writes a default `policy.yaml` if needed.
+2. Adds `agentctl hook claude-code` to Claude Code's `PreToolUse` hooks.
 
-```bash
-agentctl version
+## What Gets Intercepted
+
+The Claude Code hook adapter maps these tools into `agentctl` actions:
+
+- `Bash`
+- `Write`
+- `Edit`
+- `MultiEdit`
+- `WebFetch`
+
+Before the tool call runs, Claude Code invokes `agentctl hook claude-code` with the hook event on stdin. `agentctl` evaluates policy, records a trace, and exits:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Allow |
+| `2` | Deny or escalate; Claude Code shows the reason |
+
+If the global policy file exists but is malformed, the hook fails open and writes the error to stderr. This keeps a bad YAML edit from blocking every tool call.
+
+## Global Policy
+
+Claude Code uses the same global policy file as every other integration:
+
+```text
+~/.agentctl/policy.yaml
 ```
 
-## Hook setup
+There is no repo-local override.
 
-Add the following to `.claude/settings.json` in your repo (or `~/.claude/settings.json` for global use):
+Recent traces and approvals live at:
+
+```text
+~/.agentctl/traces.jsonl
+~/.agentctl/approvals.jsonl
+```
+
+## Manual Hook Setup
+
+If you do not want to use `attach`, add this to `~/.claude/settings.json` yourself:
 
 ```json
 {
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|WebFetch",
+        "matcher": "Bash|Write|Edit|MultiEdit|WebFetch",
         "hooks": [
           {
             "type": "command",
@@ -38,88 +73,22 @@ Add the following to `.claude/settings.json` in your repo (or `~/.claude/setting
 }
 ```
 
-Drop an `agentctl.policy.yaml` in your repo root. agentctl loads it automatically. See the example at the root of this repo.
-
-## How it works
-
-Before each Bash, Write, or WebFetch call, Claude Code runs `agentctl hook claude-code` and passes the tool event as JSON on stdin. agentctl evaluates the action against your policy and exits:
-
-| Exit code | Meaning |
-|-----------|---------|
-| 0 | Allow — Claude Code proceeds |
-| 2 | Block — Claude Code shows the reason to the user |
-
-On infrastructure failure (agentctl not found, policy unreadable), the hook exits 0 so Claude Code is never blocked by a broken gate.
-
-## Policy example
-
-```yaml
-# agentctl.policy.yaml
-actions:
-  run_code:
-    blocked_patterns:
-      - "rm -rf"
-      - "curl.*| bash"
-  install_package:
-    require_approval: always
-  call_external_api:
-    allowed_domains:
-      - "api.github.com"
-      - "api.openai.com"
-  write_file:
-    blocked_patterns:
-      - ".env"
-      - "*.pem"
-  access_secret:
-    require_approval: always
-```
-
-## Checking traces after a session
+## Useful Commands
 
 ```bash
-# Recent decisions
 agentctl trace list --last 20
-
-# All decisions for a session
 agentctl trace search --session <session_id>
-
-# Pending approvals
 agentctl approval list --status pending
-
-# Approve an escalation
 agentctl approval approve <approval_id> --by alice
+agentctl ui
 ```
 
-## Flags
-
-| Flag | Description |
-|------|-------------|
-| `--agent <name>` | Agent name annotated on each trace (default: `claude-code`) |
-| `--model <name>` | Model name annotated on each trace |
-| `--session <id>` | Override session id (default: taken from hook event) |
-
-Example with flags:
-
-```json
-{
-  "command": "agentctl hook claude-code --agent claude-code --model claude-opus-4-6"
-}
-```
-
-## Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `AGENTCTL_TRACE_FILE` | Override trace file path (default: `~/.agentctl/traces.jsonl`) |
-| `AGENTCTL_APPROVAL_FILE` | Override approvals file path (default: `~/.agentctl/approvals.jsonl`) |
-| `AGENTCTL_HOME` | Override the agentctl home directory |
-
-## Difference from MCP
+## Difference From MCP
 
 | | Hook (`agentctl hook claude-code`) | MCP (`agentctl mcp`) |
 |---|---|---|
-| Intercepts | All Bash/Write/WebFetch calls automatically | Only explicit `agentctl_*` tool calls |
-| Setup | `PreToolUse` in settings.json | `mcpServers` in settings.json |
-| Best for | Transparent policy enforcement on any Claude Code session | Opt-in gating from within custom agent code |
+| Intercepts | Native Claude Code tool calls automatically | Only explicit `agentctl_*` tool calls |
+| Setup | `attach claude-code` or manual hook entry | Manual `mcpServers` entry |
+| Best for | Transparent enforcement | Opt-in gating from prompts or agent code |
 
-See [docs/mcp.md](mcp.md) for the MCP server setup.
+See [docs/mcp.md](mcp.md) for MCP usage and Codex setup.

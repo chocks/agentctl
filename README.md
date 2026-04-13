@@ -1,60 +1,43 @@
 # agentctl
 
-Trace and control dangerous agent actions.
+`agentctl` is a local control plane for coding agents. It gates a small set of risky actions, records a trace for every decision, and can replay prior sessions against a different policy.
 
-`agentctl` gates a small set of high-risk actions, records structured traces for every decision, and replays prior sessions against different policies. Three primitives: **gate**, **trace**, **replay**.
+## Install
 
-## Agent Install
-
-Paste this prompt into your coding agent (Claude Code, Cursor, Copilot, etc.) and it will install and configure `agentctl` for your project:
-
-<details>
-<summary><b>Copy the agent prompt</b></summary>
-
-```text
-Install and configure agentctl in this project. Follow these steps exactly:
-
-1. Check prerequisites:
-   - Verify Go >= 1.23 is installed (`go version`). If not, tell me to install Go first and stop.
-   - Verify git is available.
-
-2. Install the agentctl binary:
-   - Run: go install github.com/chocks/agentctl/cmd/agentctl@latest
-   - Verify it works: agentctl version
-
-3. Create a starter policy file `agentctl.policy.yaml` in the project root with these defaults:
-
-   actions:
-     install_package:
-       require_hashes: true
-       require_lockfile: true
-     run_code:
-       block_patterns:
-         - "| bash"
-         - "| sh"
-         - "curl | python"
-         - "wget | python"
-       network: deny
-     access_secret:
-       require_approval: always
-       max_ttl: 300
-     write_file:
-       require_approval: never
-     call_external_api:
-       allowed_domains:
-         - "*.github.com"
-         - "*.pypi.org"
-         - "*.npmjs.org"
-
-4. Verify the setup by running a test gate call:
-   echo '{"action":"install_package","params":{"manager":"pip","package":"requests","version":"2.31.0","hash":"sha256:abc","pinned":true},"reason":"HTTP client"}' | agentctl gate
-
-   This should return a JSON decision with verdict "allow".
-
-5. Print a summary of what was installed and where traces will be stored (~/.agentctl/traces.jsonl).
+```bash
+go install github.com/chocks/agentctl/cmd/agentctl@latest
+agentctl version
 ```
 
-</details>
+`agentctl` stores all of its state under `~/.agentctl/`:
+
+- `policy.yaml`
+- `traces.jsonl`
+- `approvals.jsonl`
+
+There is no repo-local policy file and no HTTP server.
+
+## Quick Start
+
+Attach to a supported agent. `attach` bootstraps `~/.agentctl/` and writes a default policy if one does not exist yet.
+
+```bash
+agentctl attach claude-code
+# or
+agentctl attach codex
+```
+
+Verify the install:
+
+```bash
+agentctl doctor
+```
+
+Launch the terminal UI:
+
+```bash
+agentctl ui
+```
 
 ## Governed Actions
 
@@ -68,93 +51,95 @@ Install and configure agentctl in this project. Follow these steps exactly:
 
 Everything else stays out of the control path.
 
-## Quick Start
+## CLI
 
-```bash
-go run ./cmd/agentctl gate <<'EOF'
-{"action":"install_package","params":{"manager":"pip","package":"requests","version":"2.31.0","hash":"sha256:abc","pinned":true},"reason":"HTTP client"}
-EOF
+```text
+agentctl attach <agent>        Configure agent integration and bootstrap ~/.agentctl/
+agentctl detach <agent>        Remove agent integration
+agentctl doctor                Check policy, trace store, approvals, and agent status
+agentctl gate                  Evaluate one action from stdin
+agentctl trace list            Show recent traces
+agentctl trace search          Search traces
+agentctl replay <session_id>   Re-evaluate a recorded session
+agentctl approval list         List approvals
+agentctl approval approve <id> Approve a pending escalation
+agentctl approval deny <id>    Deny a pending escalation
+agentctl ui                    Terminal UI for traces and approvals
+agentctl hook claude-code      Claude Code PreToolUse hook adapter
+agentctl mcp                   MCP server for Codex and other MCP clients
 ```
 
-With a session id for replay:
+## Policy
 
-```bash
-go run ./cmd/agentctl gate --session demo-1 <<'EOF'
-{"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call model provider"}
-EOF
+`agentctl` loads exactly one policy file: `~/.agentctl/policy.yaml`.
 
-go run ./cmd/agentctl replay demo-1 --policy agentctl.policy.yaml
-```
+- Missing file: built-in safe defaults are used.
+- Malformed file: `gate`, `doctor`, and `mcp` fail loudly.
+- Hook mode (`agentctl hook claude-code`) fails open on malformed policy and writes the error to stderr.
 
-Traces are stored in `~/.agentctl/traces.jsonl`. Override with `AGENTCTL_HOME` or `AGENTCTL_TRACE_FILE`.
-
-## Local API
-
-```bash
-go run ./cmd/agentctl serve
-```
-
-Open `http://127.0.0.1:8080/ui` for local traces, approvals, and replay UI.
-
-For non-loopback, bearer auth is required:
-
-```bash
-AGENTCTL_AUTH_TOKEN=dev-secret go run ./cmd/agentctl serve --addr 0.0.0.0:8080
-```
-
-Multi-user headers: `Authorization: Bearer <token>`, `X-Agentctl-Actor`, `X-Agentctl-Team`.
-
-## Policy File
-
-`agentctl` loads `agentctl.policy.yaml` from the repo root by default.
+Default policy written by `attach`:
 
 ```yaml
 actions:
   install_package:
     require_hashes: true
-    require_lockfile: true
 
   run_code:
     block_patterns:
       - "| bash"
       - "| sh"
+      - "| python"
     network: deny
 
   access_secret:
     require_approval: always
     max_ttl: 300
+
+  write_file:
+    block_patterns:
+      - ".env"
+      - "*.pem"
+      - "*.key"
+
+  call_external_api:
+    allowed_domains: []
 ```
 
-## SDK Clients
+`allowed_domains: []` means deny all outbound calls. Omitting `allowed_domains` means no domain restriction.
 
-The OpenAPI contract in `api/openapi.yaml` is the source of truth for generated clients.
+## Replay
+
+Record a session under a stable session ID:
 
 ```bash
-npm install
-make codegen-js    # → sdk/js
-make codegen-py    # → sdk/python
+echo '{"action":"call_external_api","params":{"url":"https://api.openai.com/v1/responses","method":"POST"},"reason":"call provider"}' \
+  | agentctl gate --session demo-1
 ```
 
-Higher-level wrappers: `packages/js`, `packages/python`. Node quickstart: `examples/node/README.md`.
+Replay that session against the current global policy:
+
+```bash
+agentctl replay demo-1
+```
+
+Or replay against an alternate policy file:
+
+```bash
+agentctl replay demo-1 --policy ./stricter-policy.yaml
+```
+
+## Docs
+
+- [Claude Code setup](docs/claude-code.md)
+- [MCP / Codex setup](docs/mcp.md)
 
 ## Development
 
 ```bash
-make fmt      # gofmt
-make lint     # golangci-lint
-make test     # go test ./...
-make build    # go build ./...
-```
-
-## Project Layout
-
-```text
-cmd/agentctl     CLI entrypoint
-pkg/schema       canonical action and decision types
-pkg/policy       YAML policy engine
-pkg/gate         gate() primitive
-pkg/trace        append-only JSONL trace store
-api/openapi.yaml cross-language API contract
+make fmt
+make build
+make test
+make lint
 ```
 
 ## License

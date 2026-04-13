@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/chocks/agentctl/pkg/config"
 	"github.com/chocks/agentctl/pkg/gate"
 	"github.com/chocks/agentctl/pkg/policy"
 	"github.com/chocks/agentctl/pkg/schema"
@@ -26,17 +26,21 @@ import (
 // Set via -ldflags at build time. Falls back to "(dev)" for local builds.
 var version = "(dev)"
 
-const defaultPolicyFile = "agentctl.policy.yaml"
-
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
 	}
 
+	paths, err := config.DefaultPaths()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
 	switch os.Args[1] {
 	case "gate":
-		cmdGate()
+		cmdGate(paths)
 	case "trace":
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: agentctl trace [list|search]")
@@ -44,23 +48,29 @@ func main() {
 		}
 		switch os.Args[2] {
 		case "list":
-			cmdTraceList()
+			cmdTraceList(paths)
 		case "search":
-			cmdTraceSearch()
+			cmdTraceSearch(paths)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown trace command: %s\n", os.Args[2])
 			os.Exit(1)
 		}
 	case "hook":
-		cmdHook()
+		cmdHook(paths)
 	case "mcp":
-		cmdMCP()
+		cmdMCP(paths)
 	case "replay":
-		cmdReplay()
+		cmdReplay(paths)
 	case "approval":
-		cmdApproval()
-	case "serve":
-		cmdServe()
+		cmdApproval(paths)
+	case "attach":
+		cmdAttach(paths)
+	case "detach":
+		cmdDetach()
+	case "doctor":
+		cmdDoctor(paths)
+	case "ui":
+		cmdTUI(paths)
 	case "version":
 		fmt.Printf("agentctl %s\n", version)
 	case "help", "--help", "-h":
@@ -72,12 +82,19 @@ func main() {
 	}
 }
 
-func cmdGate() {
-	pol := loadPolicy()
-	traceFile := traceFilePath()
+func cmdGate(paths config.Paths) {
+	pol, err := paths.LoadPolicy()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 
-	ensureDir(filepath.Dir(traceFile))
-	tracer, err := trace.NewFileStore(traceFile)
+	if err := paths.EnsureHome(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	tracer, err := trace.NewFileStore(paths.Traces)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -110,7 +127,7 @@ func cmdGate() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if err := recordApprovalForDecision(approvalFilePath(), decision); err != nil {
+	if err := recordApprovalForDecision(paths.Approvals, decision); err != nil {
 		fmt.Fprintf(os.Stderr, "error recording approval: %v\n", err)
 		os.Exit(1)
 	}
@@ -132,7 +149,7 @@ func cmdGate() {
 	}
 }
 
-func cmdTraceList() {
+func cmdTraceList(paths config.Paths) {
 	limit := 20
 	// Simple flag parsing
 	for i, arg := range os.Args {
@@ -144,7 +161,7 @@ func cmdTraceList() {
 		}
 	}
 
-	traces, err := trace.ReadTraces(traceFilePath(), trace.TraceFilter{Limit: limit})
+	traces, err := trace.ReadTraces(paths.Traces, trace.TraceFilter{Limit: limit})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -165,7 +182,7 @@ func cmdTraceList() {
 	fmt.Printf("\n%d traces shown\n", len(traces))
 }
 
-func cmdTraceSearch() {
+func cmdTraceSearch(paths config.Paths) {
 	filter := trace.TraceFilter{}
 	for i, arg := range os.Args {
 		if i+1 >= len(os.Args) {
@@ -192,7 +209,7 @@ func cmdTraceSearch() {
 		}
 	}
 
-	traces, err := trace.ReadTraces(traceFilePath(), filter)
+	traces, err := trace.ReadTraces(paths.Traces, filter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -209,20 +226,42 @@ func cmdTraceSearch() {
 	fmt.Fprintf(os.Stderr, "\n%d traces found\n", len(traces))
 }
 
-func cmdReplay() {
+func cmdReplay(paths config.Paths) {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "usage: agentctl replay <session_id> [--policy file] [--limit N]")
 		os.Exit(1)
 	}
 
 	sessionID := os.Args[2]
-	policyFile := stringFlagValue("--policy", defaultPolicyFile)
+	policyFile := stringFlagValue("--policy", "")
 	limit := intFlagValue("--limit", 0)
 
-	results, err := replaySession(policyFile, traceFilePath(), sessionID, limit)
+	var pol *policy.Engine
+	if policyFile != "" {
+		var err error
+		pol, err = policy.LoadFromFile(policyFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error loading policy: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		var err error
+		pol, err = paths.LoadPolicy()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error loading policy: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	results, err := replaySession(pol, paths.Traces, sessionID, limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+
+	policyLabel := policyFile
+	if policyLabel == "" {
+		policyLabel = paths.Policy
 	}
 
 	out, err := json.MarshalIndent(struct {
@@ -231,7 +270,7 @@ func cmdReplay() {
 		Results   []schema.Decision `json:"results"`
 	}{
 		SessionID: sessionID,
-		Policy:    policyFile,
+		Policy:    policyLabel,
 		Results:   results,
 	}, "", "  ")
 	if err != nil {
@@ -239,22 +278,6 @@ func cmdReplay() {
 		os.Exit(1)
 	}
 	fmt.Println(string(out))
-}
-
-func loadPolicy() *policy.Engine {
-	return loadPolicyFromPath(defaultPolicyFile)
-}
-
-func loadPolicyFromPath(path string) *policy.Engine {
-	if _, err := os.Stat(path); err == nil {
-		pol, err := policy.LoadFromFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to load %s: %v (using defaults)\n", path, err)
-			return policy.DefaultEngine()
-		}
-		return pol
-	}
-	return policy.DefaultEngine()
 }
 
 func printUsage() {
@@ -266,7 +289,10 @@ Usage:
   agentctl trace search [filters]  Search traces
   agentctl replay <session_id>     Re-evaluate a session with a policy file
   agentctl approval [subcommand]   List or resolve escalations
-  agentctl serve [--addr host:port] Run local HTTP API
+  agentctl attach <agent>          Attach agentctl to claude-code or codex
+  agentctl detach <agent>          Remove agentctl from claude-code or codex
+  agentctl doctor                  Check policy, trace store, and agent status
+  agentctl ui                      Launch the terminal UI
   agentctl hook <type>             Tool hook adapter (e.g. claude-code)
   agentctl mcp                     Run as an MCP server (stdio, JSON-RPC 2.0)
   agentctl version                 Print version
@@ -296,9 +322,9 @@ Approval commands:
   approval approve <id> [--by name]
   approval deny <id> [--by name]
 
-Serve flags:
-  --addr <host:port>   Listen address (default 127.0.0.1:8080)
-  --auth-token <token> Require bearer auth for the HTTP API
+Attach agents:
+  claude-code          Configure Claude Code PreToolUse hook
+  codex                Configure Codex MCP server
 
 Hook types:
   claude-code          PreToolUse adapter for Claude Code
@@ -311,24 +337,7 @@ Hook flags:
 
 MCP flags:
   --agent <name>       Agent name to annotate traces (default: agentctl-mcp)
-  --model <name>       Model name to annotate traces
-
-MCP environment:
-  AGENTCTL_SESSION     Override session id for MCP tool calls
-  See docs/mcp.md for Claude Code and Codex CLI setup.
-
-Environment:
-  AGENTCTL_TRACE_FILE  Override the trace file path
-  AGENTCTL_APPROVAL_FILE Override the approvals file path
-  AGENTCTL_AUTH_TOKEN  Bearer token for the HTTP API
-  AGENTCTL_HOME        Override the trace home directory`)
-}
-
-func ensureDir(path string) {
-	if err := os.MkdirAll(path, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating %s: %v\n", path, err)
-		os.Exit(1)
-	}
+  --model <name>       Model name to annotate traces`)
 }
 
 func truncate(s string, max int) string {
@@ -370,24 +379,27 @@ func intFlagValue(name string, fallback int) int {
 	return fallback
 }
 
-// agentctlDataPath resolves a file path under the agentctl home directory.
-// envOverride, if set in the environment, bypasses home resolution entirely.
-func agentctlDataPath(envOverride, filename string) string {
-	if path := os.Getenv(envOverride); path != "" {
-		return path
+func replaySession(pol *policy.Engine, traceFile, sessionID string, limit int) ([]schema.Decision, error) {
+	// Read all traces for this session
+	traces, err := trace.ReadTraces(traceFile, trace.TraceFilter{
+		SessionID: sessionID,
+		Limit:     limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading traces: %w", err)
 	}
-	home := os.Getenv("AGENTCTL_HOME")
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error resolving user home directory: %v\n", err)
-			os.Exit(1)
-		}
-		home = filepath.Join(userHome, ".agentctl")
-	}
-	return filepath.Join(home, filename)
-}
 
-func traceFilePath() string {
-	return agentctlDataPath("AGENTCTL_TRACE_FILE", "traces.jsonl")
+	// Re-evaluate each trace with the new policy
+	results := make([]schema.Decision, 0, len(traces))
+	evaluator := gate.New(pol, trace.NewWriterStore(io.Discard))
+
+	for _, tr := range traces {
+		decision, err := evaluator.Evaluate(tr.Request)
+		if err != nil {
+			return nil, fmt.Errorf("re-evaluating trace: %w", err)
+		}
+		results = append(results, *decision)
+	}
+
+	return results, nil
 }

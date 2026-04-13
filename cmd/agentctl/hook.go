@@ -27,10 +27,10 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/chocks/agentctl/pkg/config"
 	"github.com/chocks/agentctl/pkg/gate"
 	"github.com/chocks/agentctl/pkg/schema"
 	"github.com/chocks/agentctl/pkg/trace"
@@ -50,21 +50,21 @@ type claudeHookResponse struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-func cmdHook() {
+func cmdHook(paths config.Paths) {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "usage: agentctl hook [claude-code]")
 		os.Exit(1)
 	}
 	switch os.Args[2] {
 	case "claude-code":
-		cmdHookClaudeCode()
+		cmdHookClaudeCode(paths)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown hook type: %s\n", os.Args[2])
 		os.Exit(1)
 	}
 }
 
-func cmdHookClaudeCode() {
+func cmdHookClaudeCode(paths config.Paths) {
 	agent := stringFlagValue("--agent", "claude-code")
 	model := stringFlagValue("--model", "")
 	sessionOverride := stringFlagValue("--session", "")
@@ -96,18 +96,29 @@ func cmdHookClaudeCode() {
 		sessionID = fmt.Sprintf("claude-%d", time.Now().UnixMilli())
 	}
 
+	workspace, _ := os.Getwd()
+
 	req.Context = schema.RequestContext{
 		SessionID: sessionID,
 		Agent:     agent,
 		Model:     model,
+		Workspace: workspace,
 		Timestamp: time.Now(),
 	}
 
-	pol := loadPolicy()
-	traceFile := traceFilePath()
-	ensureDir(filepath.Dir(traceFile))
+	pol, err := paths.LoadPolicy()
+	if err != nil {
+		// Malformed policy — fail open to avoid blocking tool use.
+		fmt.Fprintf(os.Stderr, "agentctl hook: error loading policy: %v\n", err)
+		os.Exit(0)
+	}
 
-	tracer, err := trace.NewFileStore(traceFile)
+	if err := paths.EnsureHome(); err != nil {
+		fmt.Fprintf(os.Stderr, "agentctl hook: error ensuring home: %v\n", err)
+		os.Exit(0) // Fail open: do not block tool use on infrastructure errors.
+	}
+
+	tracer, err := trace.NewFileStore(paths.Traces)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl hook: error opening trace store: %v\n", err)
 		os.Exit(0) // Fail open: do not block tool use on infrastructure errors.
@@ -120,7 +131,7 @@ func cmdHookClaudeCode() {
 		os.Exit(0) // Fail open.
 	}
 
-	if err := recordApprovalForDecision(approvalFilePath(), decision); err != nil {
+	if err := recordApprovalForDecision(paths.Approvals, decision); err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl hook: error recording approval: %v\n", err)
 	}
 
