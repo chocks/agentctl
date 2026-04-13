@@ -20,7 +20,7 @@ import (
 )
 
 // Config is the top-level policy configuration.
-// Lives in agentctl.policy.yaml in the user's repo.
+// Loaded from ~/.agentctl/policy.yaml in the local user's home directory.
 type Config struct {
 	Actions map[string]ActionPolicy `yaml:"actions"`
 	Trust   *TrustConfig            `yaml:"trust,omitempty"`

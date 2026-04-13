@@ -76,7 +76,9 @@ func TestAttachClaudeCode_PreservesExistingSettings(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(claudeDir, "settings.json"))
 	var settings map[string]any
-	json.Unmarshal(data, &settings)
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
 
 	if settings["model"] != "claude-opus-4-6" {
 		t.Error("existing model setting was lost")
@@ -105,7 +107,9 @@ func TestDetachClaudeCode(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(claudeDir, "settings.json"))
 	var settings map[string]any
-	json.Unmarshal(data, &settings)
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
 
 	hooks, _ := settings["hooks"].(map[string]any)
 	preToolUse, _ := hooks["PreToolUse"].([]any)
@@ -139,7 +143,9 @@ func TestStatusClaudeCode(t *testing.T) {
 		t.Errorf("Action = %q, want 'not attached'", result.Action)
 	}
 
-	attachClaudeCode(claudeDir)
+	if _, err := attachClaudeCode(claudeDir); err != nil {
+		t.Fatalf("attachClaudeCode() error = %v", err)
+	}
 	result, _ = statusClaudeCode(claudeDir)
 	if result.Action != "attached" {
 		t.Errorf("Action = %q, want attached", result.Action)

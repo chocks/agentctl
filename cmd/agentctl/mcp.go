@@ -17,12 +17,11 @@ package main
 //	  }
 //	}
 //
-// Usage (Codex CLI ~/.codex/config.yaml):
+// Usage (Codex CLI ~/.codex/config.toml):
 //
-//	mcp_servers:
-//	  agentctl:
-//	    command: agentctl
-//	    args: [mcp]
+//	[mcp_servers.agentctl]
+//	command = "agentctl"
+//	args = ["mcp"]
 //
 // When an MCP client calls one of the five agentctl tools, the request is
 // evaluated against the local policy, a trace is recorded, and the verdict

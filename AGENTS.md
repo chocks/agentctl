@@ -16,6 +16,7 @@ This repository implements a narrow agent control layer:
 - Prefer additive changes over broad refactors during early iterations.
 - When adding a new action type, update schema validation, policy evaluation, trace queries, tests, and docs together.
 - If CLI output changes, keep it script-friendly.
+- Keep the configuration model global and simple: `~/.agentctl/policy.yaml`, `traces.jsonl`, and `approvals.jsonl`.
 
 ## Go Workflow
 
@@ -34,12 +35,6 @@ Follow the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/st
 - **Table-driven tests** — one test function per behaviour area, subtests via `t.Run`.
 - **No global mutable state** — pass dependencies explicitly; `policy.Engine` and `trace.Store` are already correct examples.
 - **Policy tests cover every rule branch** — `pkg/policy` is the security enforcement path; a missing test for a rule branch is a gap, not just a style issue.
-
-## SDK Generation
-
-- Cross-language clients should be generated from `api/openapi.yaml`.
-- Do not hand-roll divergent JS and Python request models.
-- When the contract changes, update OpenAPI, Go schema, tests, and codegen docs together.
 
 ## Release Bias
 

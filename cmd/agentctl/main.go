@@ -289,12 +289,12 @@ Usage:
   agentctl trace search [filters]  Search traces
   agentctl replay <session_id>     Re-evaluate a session with a policy file
   agentctl approval [subcommand]   List or resolve escalations
+  agentctl attach <agent>          Attach agentctl to claude-code or codex
+  agentctl detach <agent>          Remove agentctl from claude-code or codex
+  agentctl doctor                  Check policy, trace store, and agent status
+  agentctl ui                      Launch the terminal UI
   agentctl hook <type>             Tool hook adapter (e.g. claude-code)
   agentctl mcp                     Run as an MCP server (stdio, JSON-RPC 2.0)
-  agentctl attach                  Attach to a running agent session (not yet implemented)
-  agentctl detach                  Detach from a running agent session (not yet implemented)
-  agentctl doctor                  Check agentctl configuration (not yet implemented)
-  agentctl ui                      Launch the terminal UI (not yet implemented)
   agentctl version                 Print version
 
 Gate reads an ActionRequest from stdin and outputs a Decision.
@@ -321,6 +321,10 @@ Approval commands:
   approval list [--status pending|approved|denied]
   approval approve <id> [--by name]
   approval deny <id> [--by name]
+
+Attach agents:
+  claude-code          Configure Claude Code PreToolUse hook
+  codex                Configure Codex MCP server
 
 Hook types:
   claude-code          PreToolUse adapter for Claude Code
