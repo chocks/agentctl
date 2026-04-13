@@ -98,17 +98,3 @@ func codexConfigDir() (string, error) {
 	}
 	return filepath.Join(home, ".codex"), nil
 }
-
-// attachCodex, detachCodex, statusCodex are stubs until Task 7 implements the Codex adapter.
-
-func attachCodex(codexDir string) (Result, error) {
-	return Result{Agent: AgentCodex, ConfigPath: codexDir}, fmt.Errorf("codex adapter not yet implemented")
-}
-
-func detachCodex(codexDir string) (Result, error) {
-	return Result{Agent: AgentCodex, ConfigPath: codexDir}, fmt.Errorf("codex adapter not yet implemented")
-}
-
-func statusCodex(codexDir string) (Result, error) {
-	return Result{Agent: AgentCodex, ConfigPath: codexDir}, fmt.Errorf("codex adapter not yet implemented")
-}
