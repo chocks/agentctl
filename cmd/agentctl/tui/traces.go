@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -32,10 +33,11 @@ type tracesModel struct {
 func newTracesModel(path string) tracesModel {
 	columns := []table.Column{
 		{Title: "TIME", Width: 8},
-		{Title: "ACTION", Width: 18},
-		{Title: "VERDICT", Width: 10},
-		{Title: "RISK", Width: 6},
-		{Title: "AGENT", Width: 20},
+		{Title: "ACTION", Width: 16},
+		{Title: "VERDICT", Width: 9},
+		{Title: "RISK", Width: 5},
+		{Title: "AGENT", Width: 14},
+		{Title: "COMMAND", Width: 40},
 	}
 
 	tbl := table.New(
@@ -99,9 +101,10 @@ func (m tracesModel) Update(msg tea.Msg) (tracesModel, tea.Cmd) {
 			rows = append(rows, table.Row{
 				decision.Timestamp.Format("15:04:05"),
 				string(decision.Request.Action),
-				formatVerdict(string(decision.Verdict)),
+				strings.ToUpper(string(decision.Verdict)),
 				fmt.Sprintf("%d", decision.RiskScore),
 				agent,
+				summarizeRequest(decision.Request),
 			})
 		}
 		m.table.SetRows(rows)
