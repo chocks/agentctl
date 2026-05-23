@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -67,21 +65,4 @@ func (s Styles) status(width int, text string) string {
 		style = style.Width(width)
 	}
 	return style.Render(text)
-}
-
-func formatVerdict(verdict string) string {
-	color := "245"
-	switch verdict {
-	case "allow":
-		color = "42"
-	case "deny":
-		color = "160"
-	case "escalate":
-		color = "214"
-	}
-
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(color)).
-		Bold(true).
-		Render(strings.ToUpper(verdict))
 }
