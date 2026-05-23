@@ -11,6 +11,21 @@ notes automatically.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-23
+
+### Added
+
+- **`agentctl ui`** — the traces table now shows a `COMMAND` column with the
+  concrete operation behind each action (shell command, file path, secret
+  name, API call, or package).
+
+### Fixed
+
+- **`agentctl ui`** — verdict cells were styled with ANSI escape codes that the
+  trace table truncated mid-sequence, blanking the `VERDICT` and `RISK` columns
+  and dropping the first character of `AGENT`. Verdicts now render as plain
+  text so all columns display correctly.
+
 ## [0.1.0] - 2026-04-12
 
 ### Added
@@ -72,7 +87,8 @@ replaying high-risk agent actions.
 - **Release pipeline** — cross-platform binaries for linux, darwin, windows
   across amd64 and arm64, built and published via goreleaser.
 
-[Unreleased]: https://github.com/chocks/agentctl/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/chocks/agentctl/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/chocks/agentctl/releases/tag/v0.1.1
 [0.1.0]: https://github.com/chocks/agentctl/releases/tag/v0.1.0
 [0.0.2]: https://github.com/chocks/agentctl/releases/tag/v0.0.2
 [0.0.1]: https://github.com/chocks/agentctl/releases/tag/v0.0.1
