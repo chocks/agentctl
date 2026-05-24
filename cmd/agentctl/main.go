@@ -20,6 +20,7 @@ import (
 	"github.com/chocks/agentctl/pkg/gate"
 	"github.com/chocks/agentctl/pkg/policy"
 	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/summary"
 	"github.com/chocks/agentctl/pkg/trace"
 )
 
@@ -168,7 +169,7 @@ func cmdTraceList(paths config.Paths) {
 	}
 
 	// Print as table
-	fmt.Printf("%-20s %-20s %-10s %-5s %s\n", "TIME", "ACTION", "VERDICT", "RISK", "REASON")
+	fmt.Printf("%-20s %-20s %-10s %-5s %s\n", "TIME", "ACTION", "VERDICT", "RISK", "COMMAND")
 	fmt.Println(strings.Repeat("-", 90))
 	for _, t := range traces {
 		fmt.Printf("%-20s %-20s %-10s %-5d %s\n",
@@ -176,7 +177,7 @@ func cmdTraceList(paths config.Paths) {
 			t.Request.Action,
 			t.Verdict,
 			t.RiskScore,
-			truncate(t.Reason, 40),
+			truncate(summary.Request(t.Request), 50),
 		)
 	}
 	fmt.Printf("\n%d traces shown\n", len(traces))

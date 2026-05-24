@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chocks/agentctl/pkg/schema"
+	"github.com/chocks/agentctl/pkg/summary"
 	"github.com/chocks/agentctl/pkg/trace"
 )
 
@@ -104,7 +105,7 @@ func (m tracesModel) Update(msg tea.Msg) (tracesModel, tea.Cmd) {
 				strings.ToUpper(string(decision.Verdict)),
 				fmt.Sprintf("%d", decision.RiskScore),
 				agent,
-				summarizeRequest(decision.Request),
+				summary.Request(decision.Request),
 			})
 		}
 		m.table.SetRows(rows)
