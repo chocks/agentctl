@@ -1,4 +1,9 @@
-package tui
+// Package summary renders one-line, human-readable descriptions of the
+// concrete operation behind an action request — the shell command for
+// run_code, the target path for write_file, and so on. The output is shared
+// by the CLI trace list and the terminal UI so both describe an action the
+// same way.
+package summary
 
 import (
 	"encoding/json"
@@ -6,12 +11,14 @@ import (
 	"github.com/chocks/agentctl/pkg/schema"
 )
 
-// summarizeRequest renders a one-line, human-readable description of the
-// concrete operation behind an action request — e.g. the shell command for
-// run_code, or the target path for write_file. It is display-only and must
-// never fail: on any unmarshal error it falls back to an empty string so the
-// table cell simply renders blank.
-func summarizeRequest(req schema.ActionRequest) string {
+// Request renders the concrete operation behind an action request. It is
+// display-only and must never fail: on any unmarshal error it falls back to an
+// empty string so the caller simply renders blank.
+//
+// The result is always plain text — never lipgloss/ANSI-styled — since styled
+// content corrupts fixed-width table cells (truncation counts escape bytes as
+// visible width).
+func Request(req schema.ActionRequest) string {
 	switch req.Action {
 	case schema.ActionRunCode:
 		var p schema.RunCodeParams
@@ -52,9 +59,6 @@ func summarizeRequest(req schema.ActionRequest) string {
 		return ""
 	}
 }
-
-// The summaries are plain strings — never lipgloss/ANSI-styled, since styled
-// content corrupts bubbles table cells (it counts escape bytes as width).
 
 func formatRunCode(p schema.RunCodeParams) string {
 	if p.Language == "" {
