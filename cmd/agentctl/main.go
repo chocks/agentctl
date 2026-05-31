@@ -52,6 +52,8 @@ func main() {
 			cmdTraceList(paths)
 		case "search":
 			cmdTraceSearch(paths)
+		case "verify":
+			cmdTraceVerify(paths)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown trace command: %s\n", os.Args[2])
 			os.Exit(1)
@@ -288,6 +290,7 @@ Usage:
   agentctl gate [--session id]     Evaluate an action (JSON from stdin)
   agentctl trace list [--last N]   Show recent traces
   agentctl trace search [filters]  Search traces
+  agentctl trace verify [--remote f] Verify the trace hash-chain (--json for machine output)
   agentctl replay <session_id>     Re-evaluate a session with a policy file
   agentctl approval [subcommand]   List or resolve escalations
   agentctl attach <agent>          Attach agentctl to claude-code or codex
@@ -357,6 +360,15 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 	}
 	return time.ParseDuration(s)
+}
+
+func hasFlag(name string) bool {
+	for _, arg := range os.Args {
+		if arg == name {
+			return true
+		}
+	}
+	return false
 }
 
 func stringFlagValue(name, fallback string) string {

@@ -60,6 +60,7 @@ agentctl doctor                Check policy, trace store, approvals, and agent s
 agentctl gate                  Evaluate one action from stdin
 agentctl trace list            Show recent traces
 agentctl trace search          Search traces
+agentctl trace verify          Verify the trace hash-chain
 agentctl replay <session_id>   Re-evaluate a recorded session
 agentctl approval list         List approvals
 agentctl approval approve <id> Approve a pending escalation
@@ -127,6 +128,25 @@ Or replay against an alternate policy file:
 ```bash
 agentctl replay demo-1 --policy ./stricter-policy.yaml
 ```
+
+## Trace integrity
+
+Every decision is written to `~/.agentctl/traces.jsonl` as an append-only,
+hash-chained record. Each record carries a `prev_hash` and a `hash` computed
+over its canonical contents, so altering, reordering, or deleting any record
+invalidates every hash that follows.
+
+```bash
+agentctl trace verify            # walk the chain, report OK or the exact break
+agentctl trace verify --json     # machine-readable report
+agentctl trace verify --remote fetched-store.jsonl
+```
+
+`verify` reports each chain as `OK` with its root and head hashes, or `BROKEN at
+seq N` with the reason. It also checks sequence continuity and reports any gaps.
+Exit code is `0` when verified and complete, `1` otherwise. The hash is SHA-256
+over the JSON encoding of the record with its `hash` field cleared, so the chain
+can be re-verified by any independent tool.
 
 ## Docs
 
