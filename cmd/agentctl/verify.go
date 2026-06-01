@@ -5,7 +5,7 @@ package main
 // Walks the hash-chain in the trace store and reports OK or the exact record
 // where it breaks. Works on the local store (~/.agentctl/traces.jsonl) or on a
 // fetched remote store passed with --remote. Exit code: 0 = verified and
-// complete, 1 = a chain is broken or has a sequence gap (missing shipment).
+// complete, 1 = a chain is broken or has a sequence gap (missing record).
 
 import (
 	"encoding/json"

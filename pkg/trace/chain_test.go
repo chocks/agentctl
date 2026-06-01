@@ -161,7 +161,7 @@ func TestCheckCompletenessDetectsGap(t *testing.T) {
 	recs := []Record{
 		{ChainID: chain, Seq: 1},
 		{ChainID: chain, Seq: 2},
-		{ChainID: chain, Seq: 4}, // seq 3 never arrived (dropped shipment)
+		{ChainID: chain, Seq: 4}, // seq 3 is missing (record absent from the population)
 	}
 	comp := CheckCompleteness(recs)
 	if comp.Complete {
