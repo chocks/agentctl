@@ -15,35 +15,65 @@ import (
 	"github.com/chocks/agentctl/pkg/schema"
 )
 
-// Store is the trace storage backend.
+// Store is the append-only, hash-chained trace storage backend. It is the
+// single authority for the chain: it assigns each record a sequence number and
+// links it to its predecessor by hash.
 type Store struct {
-	writer io.Writer
-	mu     sync.Mutex
+	writer   io.Writer
+	mu       sync.Mutex
+	chainID  string
+	lastSeq  uint64
+	lastHash string
 }
 
-// NewFileStore creates a trace store that writes JSON lines to a file.
+// NewFileStore creates a trace store that appends hash-chained records to a
+// file. It resumes any existing chain in the file so records written across
+// separate process invocations (the hook runs once per tool call) stay linked.
 func NewFileStore(path string) (*Store, error) {
+	chainID, err := resolveChainID(path)
+	if err != nil {
+		return nil, err
+	}
+	lastSeq, lastHash, err := readChainHead(path)
+	if err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("opening trace file: %w", err)
 	}
-	return &Store{writer: f}, nil
+	return &Store{writer: f, chainID: chainID, lastSeq: lastSeq, lastHash: lastHash}, nil
 }
 
 // NewWriterStore creates a trace store that writes to any io.Writer.
-// Useful for stdout, testing, or piping to log aggregators.
+// Useful for stdout, testing, or discarding (replay). Its chain starts fresh.
 func NewWriterStore(w io.Writer) *Store {
-	return &Store{writer: w}
+	return &Store{writer: w, chainID: memoryChainID}
 }
 
-// Record writes a decision to the trace store.
+// Record appends a decision to the trace store as the next link in the chain.
+// Trace failures are logged but never block the gate. The chain head is only
+// advanced after a successful write, so a failed write cannot leave a dangling
+// prev_hash on disk.
 func (s *Store) Record(d *schema.Decision) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	data, err := json.Marshal(d)
+	rec := Record{
+		ChainID:  s.chainID,
+		Seq:      s.lastSeq + 1,
+		PrevHash: s.lastHash,
+		Decision: *d,
+	}
+	hash, err := rec.computeHash()
 	if err != nil {
-		// Trace failures are logged but never block the gate
+		fmt.Fprintf(os.Stderr, "agentctl: trace hash error: %v\n", err)
+		return
+	}
+	rec.Hash = hash
+
+	data, err := json.Marshal(rec)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl: trace marshal error: %v\n", err)
 		return
 	}
@@ -51,7 +81,11 @@ func (s *Store) Record(d *schema.Decision) {
 	data = append(data, '\n')
 	if _, err := s.writer.Write(data); err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl: trace write error: %v\n", err)
+		return
 	}
+
+	s.lastSeq = rec.Seq
+	s.lastHash = rec.Hash
 }
 
 // ── Query support (for replay and audit) ────────────────────────────────────
@@ -89,8 +123,13 @@ func ReadTraces(path string, filter TraceFilter) ([]schema.Decision, error) {
 			continue
 		}
 
+		// Lines are hash-chained records; unwrap to the embedded decision.
+		// Fall back to legacy bare-decision lines for backward compatibility.
 		var d schema.Decision
-		if err := json.Unmarshal(line, &d); err != nil {
+		var rec Record
+		if err := json.Unmarshal(line, &rec); err == nil && rec.Hash != "" {
+			d = rec.Decision
+		} else if err := json.Unmarshal(line, &d); err != nil {
 			continue // skip malformed lines
 		}
 
